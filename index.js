@@ -2,23 +2,23 @@ const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(express.json());
 
-// Токен твоего бота
-const TOKEN = "8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w";
-const bot = new TelegramBot(TOKEN, { polling: true });
+const TOKEN = process.env.TOKEN;
+const bot = new TelegramBot(TOKEN);
 
-// Простейший ответ на любое сообщение
+app.post(`/webhook`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
+
 bot.on("message", (msg) => {
   bot.sendMessage(msg.chat.id, `Привет! Ты написал: ${msg.text}`);
 });
 
-// Главная страница сервера
 app.get("/", (req, res) => {
   res.send("Сервер работает! 🚀");
 });
 
-// Запуск сервера
-app.listen(PORT, () => {
-  console.log(`Сервер запущен на порту ${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
