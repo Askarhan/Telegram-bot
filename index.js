@@ -1,11 +1,19 @@
-// Подключаем библиотеку express
 const express = require("express");
-const app = express();
+const TelegramBot = require("node-telegram-bot-api");
 
-// Порт, на котором будет работать сервер
+const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Главная страница
+// Токен твоего бота
+const TOKEN = "8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w";
+const bot = new TelegramBot(TOKEN, { polling: true });
+
+// Простейший ответ на любое сообщение
+bot.on("message", (msg) => {
+  bot.sendMessage(msg.chat.id, `Привет! Ты написал: ${msg.text}`);
+});
+
+// Главная страница сервера
 app.get("/", (req, res) => {
   res.send("Сервер работает! 🚀");
 });
