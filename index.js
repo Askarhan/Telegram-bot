@@ -13,7 +13,6 @@ app.get('/', (req, res) => {
   res.send('Сервер работает!');
 });
 
-app.post('/bot8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w', (req, res) => {
 app.post('/webhook', (req, res) => {
   const update = req.body;
   console.log(update);
