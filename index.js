@@ -1,24 +1,31 @@
-const express = require("express");
-const TelegramBot = require("node-telegram-bot-api");
+const express = require('express');
+const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
+const PORT = process.env.PORT || 10000;
+
+const TOKEN = '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w'; // вставь сюда токен своего бота
+const bot = new TelegramBot(TOKEN);
+
 app.use(express.json());
 
-const TOKEN = process.env.TOKEN;
-const bot = new TelegramBot(TOKEN); 
-
-bot.on("message", (msg) => {
-  bot.sendMessage(msg.chat.id, `Привет! Ты написал: ${msg.text}`);
+app.get('/', (req, res) => {
+  res.send('Сервер работает!');
 });
 
-app.post("/webhook", (req, res) => {
-  bot.processUpdate(req.body);
+app.post('/webhook', (req, res) => {
+  const update = req.body;
+  console.log(update);
+
+  if (update.message) {
+    const chatId = update.message.chat.id;
+    const text = update.message.text || 'Пустое сообщение';
+    bot.sendMessage(chatId, `Ты написал: ${text}`);
+  }
+
   res.sendStatus(200);
 });
 
-app.get("/", (req, res) => {
-  res.send("Сервер работает! 🚀");
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
