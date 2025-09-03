@@ -7,7 +7,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 const TOKEN = '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 
-const bot = new TelegramBot(TOKEN, { polling: false });
+const bot = new TelegramBot(TOKEN);
 
 let selectedRegion = 'RU';
 
@@ -26,8 +26,7 @@ app.post('/webhook', (req, res) => {
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-
-  bot.sendMessage(chatId, 'Добро пожаловать! 👋', {
+  bot.sendMessage(chatId, 'Добро пожаловать! 👋 Выберите действие:', {
     reply_markup: {
       inline_keyboard: [
         [{ text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' }],
@@ -46,16 +45,24 @@ bot.on('callback_query', async (q) => {
       await bot.sendMessage(chatId, 'Выберите регион:', {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🇷🇺 RU', callback_data: 'region_ru' }],
-            [{ text: '🇰🇬 KG', callback_data: 'region_kg' }],
+            [{ text: '🇷🇺 RU', callback_data: 'region_ru' }, { text: '🇰🇬 KG', callback_data: 'region_kg' }],
             [{ text: 'Назад 🔙', callback_data: 'back_to_start' }],
           ],
         },
       });
-    } else if (q.data === 'region_ru' || q.data === 'region_kg') {
-      selectedRegion = q.data === 'region_ru' ? 'RU' : 'KG';
+    }
+
+    if (q.data === 'region_ru') {
+      selectedRegion = 'RU';
       showDiamonds(chatId);
-    } else if (q.data === 'back_to_start') {
+    }
+
+    if (q.data === 'region_kg') {
+      selectedRegion = 'KG';
+      showDiamonds(chatId);
+    }
+
+    if (q.data === 'back_to_start') {
       await bot.sendMessage(chatId, 'Главное меню:', {
         reply_markup: {
           inline_keyboard: [
@@ -65,9 +72,13 @@ bot.on('callback_query', async (q) => {
           ],
         },
       });
-    } else if (q.data === 'reviews') {
+    }
+
+    if (q.data === 'reviews') {
       await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
-    } else if (q.data === 'leave_review') {
+    }
+
+    if (q.data === 'leave_review') {
       await bot.sendMessage(chatId, 'Оставить отзыв: @ТВОЙ_НИК');
     }
 
@@ -98,11 +109,11 @@ function showDiamonds(chatId) {
 
   const diamonds = selectedRegion === 'RU' ? diamondsRU : diamondsKG;
 
-  const keyboard = diamonds.map(row =>
-    row.map((d, i) => ({ text: d, callback_data: `diamond_${i + 1}` }))
+  const keyboard = diamonds.map((row, rIndex) =>
+    row.map((d, i) => ({ text: d, callback_data: `diamond_${rIndex}_${i}` }))
   );
 
-  keyboard.push([{ text: 'Назад 🔙', callback_data: 'back_to_start' }]);
+  keyboard.push([{ text: 'Назад 🔙', callback_data: 'buy_diamonds' }]);
 
   bot.sendMessage(chatId, 'Выберите пакет алмазов:', {
     reply_markup: { inline_keyboard: keyboard },
