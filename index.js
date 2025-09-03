@@ -1,83 +1,128 @@
+const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
-const token = 'YOUR_BOT_TOKEN';
-const bot = new TelegramBot(token, { polling: true });
+
+const app = express();
+app.use(express.json());
+
+const PORT = process.env.PORT || 10000;
+const TOKEN = '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
+
+const bot = new TelegramBot(TOKEN);
+
+let selectedRegion = 'RU';
+
+app.get('/', (req, res) => {
+  res.send('Сервер работает!');
+});
+
+app.post('/webhook', (req, res) => {
+  try {
+    bot.processUpdate(req.body);
+  } catch (e) {
+    console.error('processUpdate error:', e);
+  }
+  res.sendStatus(200);
+});
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  const welcomeText = "Привет! Добро пожаловать в DIAMOND STORE 💎\nВыберите регион:";
-  const regionButtons = {
+
+  bot.sendMessage(chatId, 'Добро пожаловать! 👋 Выберите регион:', {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "🇷🇺 RU", callback_data: "region_RU" }],
-        [{ text: "🇰🇬 KG", callback_data: "region_KG" }]
-      ]
-    }
-  };
-  bot.sendMessage(chatId, welcomeText, regionButtons);
+        [{ text: '🇷🇺 RU', callback_data: 'region_ru' }],
+        [{ text: '🇰🇬 KG', callback_data: 'region_kg' }],
+      ],
+    },
+  });
 });
 
-bot.on('callback_query', (query) => {
-  const chatId = query.message.chat.id;
+bot.on('callback_query', async (q) => {
+  const chatId = q.message.chat.id;
+  const data = q.data;
 
-  switch(query.data) {
-    case 'region_RU':
-    case 'region_KG':
-      bot.sendMessage(chatId, "Выберите действие:", {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "Купить алмазы💎", callback_data: "buy_diamonds" }],
-            [{ text: "Отзывы💖", callback_data: "view_reviews" }],
-            [{ text: "Оставить отзыв💌", callback_data: "leave_review" }]
-          ]
-        }
-      });
-      break;
+  try {
+    if (data === 'region_ru') {
+      selectedRegion = 'RU';
+      await bot.sendMessage(chatId, 'Регион установлен: Россия 🇷🇺');
+      showMainMenu(chatId);
+    } else if (data === 'region_kg') {
+      selectedRegion = 'KG';
+      await bot.sendMessage(chatId, 'Регион установлен: Кыргызстан 🇰🇬');
+      showMainMenu(chatId);
+    } else if (data === 'buy_diamonds') {
+      showDiamonds(chatId);
+    } else if (data === 'reviews') {
+      await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
+    } else if (data === 'leave_review') {
+      await bot.sendMessage(chatId, 'Оставить отзыв: @ТВОЙ_НИК');
+    } else if (data.startsWith('diamond_')) {
+      await bot.sendMessage(chatId, `Вы выбрали пакет: ${data}`);
+    }
 
-    case "buy_diamonds":
-      bot.sendMessage(chatId, "Выберите пакет алмазов:", {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: "Weekly Diamond Pass — 217 ₽", callback_data: "diamond_weekly" }],
-            [{ text: "Twilight Pass — 858 ₽", callback_data: "diamond_twilight" }],
-            [{ text: "56 Diamonds — 124 ₽", callback_data: "diamond_56" }],
-            [{ text: "86 Diamonds — 153 ₽", callback_data: "diamond_86" }],
-            [{ text: "172 Diamonds — 280 ₽", callback_data: "diamond_172" }],
-            [{ text: "257 Diamonds — 411 ₽", callback_data: "diamond_257" }],
-            [{ text: "706 Diamonds — 1 224 ₽", callback_data: "diamond_706" }],
-            [{ text: "2195 Diamonds — 3 623 ₽", callback_data: "diamond_2195" }],
-            [{ text: "3688 Diamonds — 6 009 ₽", callback_data: "diamond_3688" }],
-            [{ text: "5532 Diamonds — 8 879 ₽", callback_data: "diamond_5532" }],
-            [{ text: "9288 Diamonds — 14 980 ₽", callback_data: "diamond_9288" }]
-          ]
-        }
-      });
-      break;
-
-    case "view_reviews":
-      bot.sendMessage(chatId, "Отзывы пока в разработке 💖");
-      break;
-
-    case "leave_review":
-      bot.sendMessage(chatId, "Напишите свой отзыв здесь 💌");
-      break;
-
-    case "diamond_weekly":
-    case "diamond_twilight":
-    case "diamond_56":
-    case "diamond_86":
-    case "diamond_172":
-    case "diamond_257":
-    case "diamond_706":
-    case "diamond_2195":
-    case "diamond_3688":
-    case "diamond_5532":
-    case "diamond_9288":
-      bot.sendMessage(chatId, "Чтобы купить этот пакет алмазов, напишите администратору: @ТВОЙ_НИК");
-      break;
-
-    default:
-      bot.sendMessage(chatId, "Выберите действие из меню.");
+    await bot.answerCallbackQuery(q.id);
+  } catch (e) {
+    console.error('callback error:', e);
   }
+});
 
-  bot.answerCallbackQuery(query.id);
+bot.on('message', (msg) => {
+  if (msg.text && msg.text.startsWith('/')) return;
+  const chatId = msg.chat.id;
+  const text = msg.text || 'Пустое сообщение';
+  bot.sendMessage(chatId, `Ты написал: ${text}`).catch(console.error);
+});
+
+function showMainMenu(chatId) {
+  bot.sendMessage(chatId, 'Главное меню:', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' }],
+        [{ text: 'Отзывы 💖', callback_data: 'reviews' }],
+        [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }],
+      ],
+    },
+  });
+}
+
+function showDiamonds(chatId) {
+  let diamondsRU = [
+    'Weekly Diamond Pass — 217 ₽',
+    'Twilight Pass — 858 ₽',
+    '56 Diamonds — 124 ₽',
+    '86 Diamonds — 152 ₽',
+    '172 Diamonds — 280 ₽',
+    '257 Diamonds — 411 ₽',
+    '706 Diamonds — 1 224 ₽',
+    '2195 Diamonds — 3 106 ₽',
+    '3688 Diamonds — 5 150 ₽',
+    '5532 Diamonds — 7 470 ₽',
+    '9288 Diamonds — 12 980 ₽',
+  ];
+
+  let diamondsKG = [
+    'Weekly Diamond Pass — 217 KGS',
+    'Twilight Pass — 858 KGS',
+    '56 Diamonds — 124 KGS',
+    '86 Diamonds — 152 KGS',
+    '172 Diamonds — 280 KGS',
+    '257 Diamonds — 411 KGS',
+    '706 Diamonds — 1 224 KGS',
+    '2195 Diamonds — 3 106 KGS',
+    '3688 Diamonds — 5 150 KGS',
+    '5532 Diamonds — 7 470 KGS',
+    '9288 Diamonds — 12 980 KGS',
+  ];
+
+  const diamonds = selectedRegion === 'RU' ? diamondsRU : diamondsKG;
+
+  const keyboard = diamonds.map((d, i) => [{ text: d, callback_data: `diamond_${i + 1}` }]);
+
+  bot.sendMessage(chatId, 'Выберите пакет алмазов:', {
+    reply_markup: { inline_keyboard: keyboard },
+  });
+}
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
