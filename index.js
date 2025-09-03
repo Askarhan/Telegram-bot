@@ -9,6 +9,10 @@ const TOKEN = '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 
 const bot = new TelegramBot(TOKEN);
 
+const adminChatId = 895583535;
+
+const waitingForAction = {};
+
 let selectedRegion = 'RU';
 
 const diamondsDataRU = [
@@ -55,6 +59,67 @@ bot.onText(/\/start/, (msg) => {
     showMainMenu(chatId);
 });
 
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+
+    if (waitingForAction[chatId]) {
+        if (waitingForAction[chatId].step === 'playerId') {
+            const playerId = msg.text;
+            const orderData = waitingForAction[chatId];
+            const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
+            const selectedItem = diamondsData[orderData.index];
+            const currency = orderData.region === 'RU' ? '₽' : 'KGS';
+
+        
+            const adminMessage =
+                `📢 **НОВЫЙ ЗАКАЗ**\n\n` +
+                `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
+                `**Сумма:** ${selectedItem.price} ${currency}\n` +
+                `**Пользователь:** ${msg.from.username ? `@${msg.from.username}` : msg.from.first_name}\n` +
+                `**ID пользователя:** ${msg.from.id}\n` +
+                `**ID игрока MLBB:** ${playerId}`;
+            
+            await bot.sendMessage(adminChatId, adminMessage, { parse_mode: 'Markdown' });
+
+        
+            const userMessageText =
+                `К оплате ${selectedItem.price} ${currency}.\n\n` +
+                `**Переведите средства на:**\n` +
+                `[ВАШИ РЕКВИЗИТЫ]\n\n` +
+                `*После оплаты нажмите "Я оплатил ✅".*`;
+            
+            await bot.sendMessage(
+                chatId,
+                userMessageText,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: 'Я оплатил ✅', callback_data: `paid` }],
+                            [{ text: 'Назад', callback_data: 'back_to_regions' }]
+                        ]
+                    }
+                }
+            );
+
+        
+            delete waitingForAction[chatId];
+        } else if (waitingForAction[chatId].step === 'screenshot' && msg.photo) {
+            
+            const photoId = msg.photo[msg.photo.length - 1].file_id;
+
+            await bot.sendPhoto(adminChatId, photoId, { caption: `Скриншот оплаты от пользователя: ${msg.from.username ? `@${msg.from.username}` : msg.from.first_name}` });
+
+            await bot.sendMessage(
+                chatId,
+                'Спасибо за покупку, мы пополним ваш аккаунт после подтверждения оплаты!\nСпасибо за доверие, ждите свои алмазы❤️'
+            );
+
+            delete waitingForAction[chatId];
+        }
+    }
+});
+
 bot.on('callback_query', async (q) => {
     const chatId = q.message.chat.id;
     const messageId = q.message.message_id;
@@ -85,25 +150,18 @@ bot.on('callback_query', async (q) => {
             const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[selectedItemIndex];
 
-            await bot.sendMessage(
-                chatId,
-                `К оплате ${selectedItem.price} ${selectedRegion === 'RU' ? '₽' : 'KGS'}.\n\nПереведите средства на: [ВАШИ РЕКВИЗИТЫ].\n\nИмя пользователя: ${q.from.username}. ID пользователя: ${q.from.id}`,
-                {
-                    reply_markup: {
-                        inline_keyboard: [
-                            [{ text: 'Я оплатил ✅', callback_data: `paid_${selectedItemIndex}` }],
-                            [{ text: 'Назад', callback_data: 'back_to_regions' }]
-                        ],
-                    }
-                }
-            );
-        } else if (q.data.startsWith('paid_')) {
-            const selectedItemIndex = q.data.split('_')[1];
-            const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
-            const selectedItem = diamondsData[selectedItemIndex];
-            const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
-            
-            await bot.sendMessage(chatId, `Спасибо! Ваша оплата за ${selectedItem.amount} на сумму ${selectedItem.price} ${currency} принята. Мы проверим поступление средств и отправим вам алмазы в течение нескольких минут.`);
+            waitingForAction[chatId] = {
+                step: 'playerId',
+                index: selectedItemIndex,
+                region: selectedRegion,
+                item: selectedItem
+            };
+
+            await bot.sendMessage(chatId, `Вы выбрали **${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}** за **${selectedItem.price}** ${selectedRegion === 'RU' ? '₽' : 'KGS'}. Пожалуйста, отправьте мне ID своего аккаунта MLBB:`, { parse_mode: 'Markdown' });
+        } else if (q.data === 'paid') {
+            const userFirstName = q.from.first_name;
+            await bot.sendMessage(chatId, `Спасибо, ${userFirstName}! Теперь, пожалуйста, **пришлите скриншот** вашей оплаты.`);
+            waitingForAction[chatId] = { step: 'screenshot' };
         }
         await bot.answerCallbackQuery(q.id);
     } catch (e) {
