@@ -65,11 +65,15 @@ bot.on('callback_query', async (q) => {
         if (q.data === 'buy_diamonds') {
             await editToRegionMenu(chatId, messageId);
         } else if (q.data === 'region_ru') {
-            selectedRegion = 'RU';
-            await editToDiamondsMenu(chatId, messageId);
+            if (selectedRegion !== 'RU') {
+                selectedRegion = 'RU';
+                await editToDiamondsMenu(chatId, messageId);
+            }
         } else if (q.data === 'region_kg') {
-            selectedRegion = 'KG';
-            await editToDiamondsMenu(chatId, messageId);
+            if (selectedRegion !== 'KG') {
+                selectedRegion = 'KG';
+                await editToDiamondsMenu(chatId, messageId);
+            }
         } else if (q.data === 'reviews') {
             await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
         } else if (q.data === 'leave_review') {
@@ -79,13 +83,9 @@ bot.on('callback_query', async (q) => {
         } else if (q.data === 'back_to_regions') {
             await editToRegionMenu(chatId, messageId);
         } else if (q.data.startsWith('diamond_')) {
-            console.log('Пользователь нажал на кнопку с алмазами. Данные:', q.data);
-            
             const selectedItemIndex = q.data.split('_')[1];
             const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[selectedItemIndex];
-
-            console.log('Данные для отправки счёта:', selectedItem);
 
             await bot.sendInvoice(
                 chatId,
@@ -171,6 +171,22 @@ async function editToDiamondsMenu(chatId, messageId) {
         chat_id: chatId,
         message_id: messageId,
         reply_markup: { inline_keyboard: keyboard },
+    });
+}
+
+async function editToMainMenu(chatId, messageId) {
+    await bot.editMessageText('Главное меню:', {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
+                    { text: 'Отзывы 💖', callback_data: 'reviews' }
+                ],
+                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
+            ]
+        }
     });
 }
 
