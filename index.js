@@ -53,3 +53,34 @@ app.post('/webhook', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+
+  bot.sendMessage(chatId, "Добро пожаловать! 👋 Выберите действие:", {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "Купить алмазы 💎", callback_data: "buy_diamonds" }],
+        [{ text: "Отзывы 💖", callback_data: "reviews" }],
+        [{ text: "Оставить отзыв 💌", callback_data: "leave_review" }]
+      ]
+    }
+  });
+});
+
+bot.on("callback_query", (query) => {
+  const chatId = query.message.chat.id;
+
+  if (query.data === "buy_diamonds") {
+    bot.sendMessage(chatId, "Чтобы купить алмазы, напишите администратору: @ТВОЙ_НИК");
+  }
+
+  if (query.data === "reviews") {
+    bot.sendMessage(chatId, "Отзывы наших клиентов доступны здесь: https://t.me/ТВОЙ_КАНАЛ");
+  }
+
+  if (query.data === "leave_review") {
+    bot.sendMessage(chatId, "Напишите свой отзыв администратору: @ТВОЙ_НИК");
+  }
+
+  bot.answerCallbackQuery(query.id);
+});
