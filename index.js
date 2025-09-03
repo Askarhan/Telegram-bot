@@ -7,7 +7,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 const TOKEN = '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 
-const bot = new TelegramBot(TOKEN, { polling: true });
+const bot = new TelegramBot(TOKEN);
 
 let selectedRegion = 'RU';
 
