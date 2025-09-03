@@ -7,8 +7,6 @@ app.use(express.json());
 const PORT = process.env.PORT;
 const TOKEN = '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 
-const providerToken = '350123512:TEST:4960570a295801b7a66b2d2f74139e80';
-
 const bot = new TelegramBot(TOKEN);
 
 let selectedRegion = 'RU';
@@ -87,16 +85,19 @@ bot.on('callback_query', async (q) => {
             const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[selectedItemIndex];
 
-            await bot.sendInvoice(
+            // Формируем тестовую ссылку для оплаты
+            const paymentUrl = `https://t.me/payments?provider_token=123:TEST&currency=${selectedRegion === 'RU' ? 'RUB' : 'KGS'}&amount=${selectedItem.price * 100}&title=${encodeURIComponent(typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount)}`;
+
+            await bot.sendMessage(
                 chatId,
-                `${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}`,
-                `Покупка ${typeof selectedItem.amount === 'number' ? `пакета ${selectedItem.amount} алмазов` : selectedItem.amount}`,
-                'unique_payload',
-                providerToken,
-                selectedRegion === 'RU' ? 'RUB' : 'KGS',
-                [{ label: `${selectedItem.amount}`, amount: selectedItem.price * 100 }],
+                `К оплате ${selectedItem.price} ${selectedRegion === 'RU' ? '₽' : 'KGS'}. Нажмите кнопку ниже, чтобы оплатить.`,
                 {
-                    need_shipping_address: false
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: 'Оплатить 💳', url: paymentUrl }],
+                            [{ text: 'Назад', callback_data: 'back_to_regions' }]
+                        ],
+                    }
                 }
             );
         }
@@ -104,15 +105,6 @@ bot.on('callback_query', async (q) => {
     } catch (e) {
         console.error('callback error:', e);
     }
-});
-
-bot.on('pre_checkout_query', (query) => {
-    bot.answerPreCheckoutQuery(query.id, true);
-});
-
-bot.on('successful_payment', (msg) => {
-    const chatId = msg.chat.id;
-    bot.sendMessage(chatId, '✅ Оплата прошла успешно! Спасибо за покупку.');
 });
 
 async function showMainMenu(chatId) {
@@ -171,22 +163,6 @@ async function editToDiamondsMenu(chatId, messageId) {
         chat_id: chatId,
         message_id: messageId,
         reply_markup: { inline_keyboard: keyboard },
-    });
-}
-
-async function editToMainMenu(chatId, messageId) {
-    await bot.editMessageText('Главное меню:', {
-        chat_id: chatId,
-        message_id: messageId,
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
-                    { text: 'Отзывы 💖', callback_data: 'reviews' }
-                ],
-                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
-            ]
-        }
     });
 }
 
