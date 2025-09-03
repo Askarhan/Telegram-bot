@@ -79,9 +79,13 @@ bot.on('callback_query', async (q) => {
         } else if (q.data === 'back_to_regions') {
             await editToRegionMenu(chatId, messageId);
         } else if (q.data.startsWith('diamond_')) {
+            console.log('Пользователь нажал на кнопку с алмазами. Данные:', q.data);
+            
             const selectedItemIndex = q.data.split('_')[1];
             const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[selectedItemIndex];
+
+            console.log('Данные для отправки счёта:', selectedItem);
 
             await bot.sendInvoice(
                 chatId,
@@ -95,7 +99,6 @@ bot.on('callback_query', async (q) => {
                     need_shipping_address: false
                 }
             );
-
         }
         await bot.answerCallbackQuery(q.id);
     } catch (e) {
