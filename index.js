@@ -92,36 +92,28 @@ bot.on('callback_query', async (q) => {
 
 function showDiamonds(chatId) {
   let diamondsRU = [
-    'Weekly Diamond Pass — 217 ₽',
-    'Twilight Pass — 858 ₽',
-    '56 Diamonds — 124 ₽',
-    '86 Diamonds — 152 ₽',
-    '172 Diamonds — 280 ₽',
-    '257 Diamonds — 411 ₽',
-    '706 Diamonds — 1 224 ₽',
-    '2195 Diamonds — 3 106 ₽',
-    '3688 Diamonds — 5 150 ₽',
-    '5532 Diamonds — 7 470 ₽',
-    '9288 Diamonds — 12 980 ₽',
+    ['Weekly Diamond Pass — 217 ₽', 'Twilight Pass — 858 ₽'],
+    ['56 Diamonds — 124 ₽', '86 Diamonds — 152 ₽'],
+    ['172 Diamonds — 280 ₽', '257 Diamonds — 411 ₽'],
+    ['706 Diamonds — 1 224 ₽', '2195 Diamonds — 3 105 ₽'],
+    ['3688 Diamonds — 5 069 ₽', '5532 Diamonds — 7 446 ₽'],
+    ['9288 Diamonds — 12 980 ₽']
   ];
 
   let diamondsKG = [
-    'Weekly Diamond Pass — 217 KGS',
-    'Twilight Pass — 858 KGS',
-    '56 Diamonds — 124 KGS',
-    '86 Diamonds — 152 KGS',
-    '172 Diamonds — 280 KGS',
-    '257 Diamonds — 411 KGS',
-    '706 Diamonds — 1 224 KGS',
-    '2195 Diamonds — 3 106 KGS',
-    '3688 Diamonds — 5 150 KGS',
-    '5532 Diamonds — 7 470 KGS',
-    '9288 Diamonds — 12 980 KGS',
+    ['Weekly Diamond Pass — 217 KGS', 'Twilight Pass — 858 KGS'],
+    ['56 Diamonds — 124 KGS', '86 Diamonds — 152 KGS'],
+    ['172 Diamonds — 280 KGS', '257 Diamonds — 411 KGS'],
+    ['706 Diamonds — 1 224 KGS', '2195 Diamonds — 3 105 KGS'],
+    ['3688 Diamonds — 5 069 KGS', '5532 Diamonds — 7 446 KGS'],
+    ['9288 Diamonds — 12 980 KGS']
   ];
 
   const diamonds = selectedRegion === 'RU' ? diamondsRU : diamondsKG;
 
-  const keyboard = diamonds.map((d, i) => [{ text: d, callback_data: `diamond_${i + 1}` }]);
+  const keyboard = diamonds.map(row => row.map((d, i) => ({ text: d, callback_data: `diamond_${i + 1}` })));
+
+  keyboard.push([{ text: 'Назад 🔙', callback_data: 'back_to_start' }]);
 
   bot.sendMessage(chatId, 'Выберите пакет алмазов:', {
     reply_markup: { inline_keyboard: keyboard },
