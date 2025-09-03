@@ -7,6 +7,8 @@ app.use(express.json());
 const PORT = process.env.PORT;
 const TOKEN = '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 
+const providerToken = '284685063:TEST:ZTY0ZDU1ODU5OWFl';
+
 const bot = new TelegramBot(TOKEN);
 
 let selectedRegion = 'RU';
@@ -76,11 +78,38 @@ bot.on('callback_query', async (q) => {
             await editToMainMenu(chatId, messageId);
         } else if (q.data === 'back_to_regions') {
             await editToRegionMenu(chatId, messageId);
+        } else if (q.data.startsWith('diamond_')) {
+            const selectedItemIndex = q.data.split('_')[1];
+            const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
+            const selectedItem = diamondsData[selectedItemIndex];
+
+            await bot.sendInvoice(
+                chatId,
+                `${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}`,
+                `Покупка ${typeof selectedItem.amount === 'number' ? `пакета ${selectedItem.amount} алмазов` : selectedItem.amount}`,
+                'unique_payload',
+                providerToken,
+                selectedRegion === 'RU' ? 'RUB' : 'KGS',
+                [{ label: `${selectedItem.amount}`, amount: selectedItem.price * 100 }],
+                {
+                    need_shipping_address: false
+                }
+            );
+
         }
         await bot.answerCallbackQuery(q.id);
     } catch (e) {
         console.error('callback error:', e);
     }
+});
+
+bot.on('pre_checkout_query', (query) => {
+    bot.answerPreCheckoutQuery(query.id, true);
+});
+
+bot.on('successful_payment', (msg) => {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, '✅ Оплата прошла успешно! Спасибо за покупку.');
 });
 
 async function showMainMenu(chatId) {
@@ -139,22 +168,6 @@ async function editToDiamondsMenu(chatId, messageId) {
         chat_id: chatId,
         message_id: messageId,
         reply_markup: { inline_keyboard: keyboard },
-    });
-}
-
-async function editToMainMenu(chatId, messageId) {
-    await bot.editMessageText('Главное меню:', {
-        chat_id: chatId,
-        message_id: messageId,
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
-                    { text: 'Отзывы 💖', callback_data: 'reviews' }
-                ],
-                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
-            ]
-        }
     });
 }
 
