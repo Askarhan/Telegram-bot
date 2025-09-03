@@ -35,20 +35,38 @@ bot.onText(/\/start/, (msg) => {
   });
 });
 
-bot.on('callback_query', async (q) => {
-  const chatId = q.message.chat.id;
-  try {
-    if (q.data === 'buy_diamonds') {
-      await bot.sendMessage(chatId, 'Чтобы купить алмазы, напишите администратору: @ТВОЙ_НИК');
-    } else if (q.data === 'reviews') {
-      await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
-    } else if (q.data === 'leave_review') {
-      await bot.sendMessage(chatId, 'Оставить отзыв: @ТВОЙ_НИК');
-    }
-    await bot.answerCallbackQuery(q.id);
-  } catch (e) {
-    console.error('callback error:', e);
+bot.on("callback_query", (query) => {
+  const chatId = query.message.chat.id;
+
+  if (query.data === "buy_diamonds") {
+    
+    bot.sendMessage(chatId, "Выберите регион для отображения цен:", {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: "Россия 🇷🇺", callback_data: "region_RU" }],
+          [{ text: "Кыргызстан 🇰🇬", callback_data: "region_KG" }]
+        ]
+      }
+    });
   }
+
+  if (query.data === "region_RU") {
+    bot.sendMessage(chatId, "Цены на алмазы в рублях:\n💎 100 алмазов — 100 ₽\n💎 500 алмазов — 450 ₽\n💎 1000 алмазов — 850 ₽");
+  }
+
+  if (query.data === "region_KG") {
+    bot.sendMessage(chatId, "Цены на алмазы в сомах:\n💎 100 алмазов — 8700 сом\n💎 500 алмазов — 43500 сом\n💎 1000 алмазов — 87000 сом");
+  }
+
+  if (query.data === "reviews") {
+    bot.sendMessage(chatId, "Отзывы наших клиентов доступны здесь: https://t.me/ТВОЙ_КАНАЛ");
+  }
+
+  if (query.data === "leave_review") {
+    bot.sendMessage(chatId, "Напишите свой отзыв администратору: @ТВОЙ_НИК");
+  }
+
+  bot.answerCallbackQuery(query.id);
 });
 
 bot.on('message', (msg) => {
