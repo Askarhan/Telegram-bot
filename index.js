@@ -39,51 +39,56 @@ bot.onText(/\/start/, (msg) => {
 
 bot.on('callback_query', async (q) => {
   const chatId = q.message.chat.id;
-  const data = q.data;
-
   try {
-    if (data === 'region_ru') {
-      selectedRegion = 'RU';
-      await bot.sendMessage(chatId, 'Регион установлен: Россия 🇷🇺');
-      showMainMenu(chatId);
-    } else if (data === 'region_kg') {
-      selectedRegion = 'KG';
-      await bot.sendMessage(chatId, 'Регион установлен: Кыргызстан 🇰🇬');
-      showMainMenu(chatId);
-    } else if (data === 'buy_diamonds') {
-      showDiamonds(chatId);
-    } else if (data === 'reviews') {
+    if (q.data === 'buy_diamonds') {
+      await bot.sendMessage(chatId, 'Выберите пакет алмазов:', {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '56 Diamonds - 124 ₽', callback_data: 'buy_56' },
+              { text: '86 Diamonds - 152 ₽', callback_data: 'buy_86' }
+            ],
+            [
+              { text: '172 Diamonds - 280 ₽', callback_data: 'buy_172' },
+              { text: '257 Diamonds - 411 ₽', callback_data: 'buy_257' }
+            ],
+            [
+              { text: '706 Diamonds - 1 224 ₽', callback_data: 'buy_706' },
+              { text: '2195 Diamonds - 3 105 ₽', callback_data: 'buy_2195' }
+            ],
+            [
+              { text: '3688 Diamonds - 5 069 ₽', callback_data: 'buy_3688' },
+              { text: '5532 Diamonds - 7 446 ₽', callback_data: 'buy_5532' }
+            ],
+            [
+              { text: '9288 Diamonds - 12 980 ₽', callback_data: 'buy_9288' }
+            ],
+            [
+              { text: 'Назад 🔙', callback_data: 'back_to_start' }
+            ]
+          ]
+        }
+      });
+    } else if (q.data === 'back_to_start') {
+      await bot.sendMessage(chatId, 'Возвращаемся в главное меню:', {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' }],
+            [{ text: 'Отзывы 💖', callback_data: 'reviews' }],
+            [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }],
+          ]
+        }
+      });
+    } else if (q.data === 'reviews') {
       await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
-    } else if (data === 'leave_review') {
+    } else if (q.data === 'leave_review') {
       await bot.sendMessage(chatId, 'Оставить отзыв: @ТВОЙ_НИК');
-    } else if (data.startsWith('diamond_')) {
-      await bot.sendMessage(chatId, `Вы выбрали пакет: ${data}`);
     }
-
     await bot.answerCallbackQuery(q.id);
   } catch (e) {
     console.error('callback error:', e);
   }
 });
-
-bot.on('message', (msg) => {
-  if (msg.text && msg.text.startsWith('/')) return;
-  const chatId = msg.chat.id;
-  const text = msg.text || 'Пустое сообщение';
-  bot.sendMessage(chatId, `Ты написал: ${text}`).catch(console.error);
-});
-
-function showMainMenu(chatId) {
-  bot.sendMessage(chatId, 'Главное меню:', {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' }],
-        [{ text: 'Отзывы 💖', callback_data: 'reviews' }],
-        [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }],
-      ],
-    },
-  });
-}
 
 function showDiamonds(chatId) {
   let diamondsRU = [
