@@ -26,28 +26,19 @@ app.post('/webhook', (req, res) => {
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId, 'Добро пожаловать! 👋 Выберите регион:', {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: '🇷🇺 RU', callback_data: 'region_ru' },
-          { text: '🇰🇬 KG', callback_data: 'region_kg' }
-        ]
-      ],
-    },
-  });
+  showMainMenu(chatId);
 });
 
 bot.on('callback_query', async (q) => {
   const chatId = q.message.chat.id;
   try {
-    if (q.data === 'region_ru') {
+    if (q.data === 'buy_diamonds') {
+      await showRegionMenu(chatId);
+    } else if (q.data === 'region_ru') {
       selectedRegion = 'RU';
-      await showMainMenu(chatId);
+      await showDiamonds(chatId);
     } else if (q.data === 'region_kg') {
       selectedRegion = 'KG';
-      await showMainMenu(chatId);
-    } else if (q.data === 'buy_diamonds') {
       await showDiamonds(chatId);
     } else if (q.data === 'reviews') {
       await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
@@ -71,6 +62,20 @@ async function showMainMenu(chatId) {
           { text: 'Отзывы 💖', callback_data: 'reviews' }
         ],
         [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
+      ]
+    }
+  });
+}
+
+async function showRegionMenu(chatId) {
+  await bot.sendMessage(chatId, 'Выберите регион:', {
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: '🇷🇺 RU', callback_data: 'region_ru' },
+          { text: '🇰🇬 KG', callback_data: 'region_kg' }
+        ],
+        [{ text: 'Назад 🔙', callback_data: 'back_to_start' }]
       ]
     }
   });
