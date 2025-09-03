@@ -19,11 +19,14 @@ app.post('/webhook', (req, res) => {
   if (update.message) {
     const chatId = update.message.chat.id;
     const text = update.message.text || '';
+    console.log(`Сообщение от пользователя: ${text}`);
+  }
+});
 
-  
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
 
@@ -42,7 +45,7 @@ bot.on("callback_query", (query) => {
   const chatId = query.message.chat.id;
 
   if (query.data === "buy_diamonds") {
-    bot.sendMessage(chatId, "Чтобы купить алмазы, напишите администратору: @ТВОЙ_НИК");
+    bot.sendMessage(chatId, "Чтобы купить алмазы, напишите администратору: @wehavedifferentlevels");
   }
 
   if (query.data === "reviews") {
