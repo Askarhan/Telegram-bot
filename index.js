@@ -20,36 +20,7 @@ app.post('/webhook', (req, res) => {
     const chatId = update.message.chat.id;
     const text = update.message.text || '';
 
-    if (text === '/start') {
-      bot.sendMessage(chatId, 'Привет! Я твой бот. Напиши что-нибудь, и я повторю это.');
-    } else if (text === '/help') {
-      bot.sendMessage(chatId, 'Список команд:\n/start — начать\n/help — помощь\n/buttons — кнопки');
-    } else if (text === '/buttons') {
-      bot.sendMessage(chatId, 'Выбери действие:', {
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: 'Привет', callback_data: 'say_hello' }],
-            [{ text: 'Пока', callback_data: 'say_bye' }]
-          ]
-        }
-      });
-    } else {
-      bot.sendMessage(chatId, `Ты написал: ${text}`).catch(err => console.error(err));
-    }
-  }
-
-  if (update.callback_query) {
-    const chatId = update.callback_query.message.chat.id;
-    const data = update.callback_query.data;
-
-    if (data === 'say_hello') {
-      bot.sendMessage(chatId, 'Привет!');
-    } else if (data === 'say_bye') {
-      bot.sendMessage(chatId, 'Пока!');
-    }
-  }
-});
-
+  
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
