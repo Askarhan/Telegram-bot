@@ -7,7 +7,7 @@ app.use(express.json());
 const PORT = process.env.PORT;
 const TOKEN = '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 
-const providerToken = '284685063:TEST:94244195726B14B0220F49953F108C36B6900D8C';
+const providerToken = '350123512:TEST:4960570a295801b7a66b2d2f74139e80';
 
 const bot = new TelegramBot(TOKEN);
 
