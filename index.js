@@ -85,21 +85,25 @@ bot.on('callback_query', async (q) => {
             const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[selectedItemIndex];
 
-            // Формируем тестовую ссылку для оплаты
-            const paymentUrl = `https://t.me/payments?provider_token=123:TEST&currency=${selectedRegion === 'RU' ? 'RUB' : 'KGS'}&amount=${selectedItem.price * 100}&title=${encodeURIComponent(typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount)}`;
-
             await bot.sendMessage(
                 chatId,
-                `К оплате ${selectedItem.price} ${selectedRegion === 'RU' ? '₽' : 'KGS'}. Нажмите кнопку ниже, чтобы оплатить.`,
+                `К оплате ${selectedItem.price} ${selectedRegion === 'RU' ? '₽' : 'KGS'}.\n\nПереведите средства на: [ВАШИ РЕКВИЗИТЫ].\n\nИмя пользователя: ${q.from.username}. ID пользователя: ${q.from.id}`,
                 {
                     reply_markup: {
                         inline_keyboard: [
-                            [{ text: 'Оплатить 💳', url: paymentUrl }],
+                            [{ text: 'Я оплатил ✅', callback_data: `paid_${selectedItemIndex}` }],
                             [{ text: 'Назад', callback_data: 'back_to_regions' }]
                         ],
                     }
                 }
             );
+        } else if (q.data.startsWith('paid_')) {
+            const selectedItemIndex = q.data.split('_')[1];
+            const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
+            const selectedItem = diamondsData[selectedItemIndex];
+            const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
+            
+            await bot.sendMessage(chatId, `Спасибо! Ваша оплата за ${selectedItem.amount} на сумму ${selectedItem.price} ${currency} принята. Мы проверим поступление средств и отправим вам алмазы в течение нескольких минут.`);
         }
         await bot.answerCallbackQuery(q.id);
     } catch (e) {
@@ -163,6 +167,22 @@ async function editToDiamondsMenu(chatId, messageId) {
         chat_id: chatId,
         message_id: messageId,
         reply_markup: { inline_keyboard: keyboard },
+    });
+}
+
+async function editToMainMenu(chatId, messageId) {
+    await bot.editMessageText('Главное меню:', {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
+                    { text: 'Отзывы 💖', callback_data: 'reviews' }
+                ],
+                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
+            ]
+        }
     });
 }
 
