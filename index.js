@@ -43,24 +43,25 @@ bot.onText(/\/start/, (msg) => {
 
 bot.on('callback_query', async (q) => {
     const chatId = q.message.chat.id;
+    const messageId = q.message.message_id;
+
     try {
-        if (q.data === 'show_regions') {
+        if (q.data === 'buy_diamonds') {
+            await bot.deleteMessage(chatId, messageId);
             await showRegionMenu(chatId);
         } else if (q.data === 'region_ru') {
             selectedRegion = 'RU';
+            await bot.deleteMessage(chatId, messageId);
             await showDiamonds(chatId);
         } else if (q.data === 'region_kg') {
             selectedRegion = 'KG';
+            await bot.deleteMessage(chatId, messageId);
             await showDiamonds(chatId);
-        } else if (q.data === 'buy_diamonds') {
-            await showRegionMenu(chatId);
-        } else if (q.data === 'reviews') {
-            await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
-        } else if (q.data === 'leave_review') {
-            await bot.sendMessage(chatId, 'Оставить отзыв: @ТВОЙ_НИК');
         } else if (q.data === 'back_to_start') {
+            await bot.deleteMessage(chatId, messageId);
             await showMainMenu(chatId);
         } else if (q.data === 'back_to_regions') {
+            await bot.deleteMessage(chatId, messageId);
             await showRegionMenu(chatId);
         }
         await bot.answerCallbackQuery(q.id);
