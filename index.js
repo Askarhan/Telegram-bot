@@ -12,29 +12,29 @@ const bot = new TelegramBot(TOKEN);
 let selectedRegion = 'RU';
 
 const diamondsDataRU = [
-    { amount: 56💎, price: 124 },
-    { amount: 86💎, price: 152 },
-    { amount: 172💎, price: 280 },
-    { amount: 257💎, price: 411 },
-    { amount: 706💎, price: 1224 },
-    { amount: 2195💎, price: 3105 },
-    { amount: 3688💎, price: 5069 },
-    { amount: 5532💎, price: 7446 },
-    { amount: 9288💎, price: 12980 }
+    { amount: 56, price: 124 },
+    { amount: 86, price: 152 },
+    { amount: 172, price: 280 },
+    { amount: 257, price: 411 },
+    { amount: 706, price: 1224 },
+    { amount: 2195, price: 3105 },
+    { amount: 3688, price: 5069 },
+    { amount: 5532, price: 7446 },
+    { amount: 9288, price: 12980 }
 ];
 
 const diamondsDataKG = [
     { amount: 'Алмазный пропуск (w)', price: 181 },
     { amount: 'Сумеречный пропуск', price: 715 },
-    { amount: 56💎, price: 104 },
-    { amount: 86💎, price: 127 },
-    { amount: 172💎, price: 234 },
-    { amount: 257💎, price: 343 },
-    { amount: 706💎, price: 874 },
-    { amount: 2195💎, price: 2588 },
-    { amount: 3688💎, price: 4292 },
-    { amount: 5532💎, price: 6342 },
-    { amount: 9288💎, price: 10700 }
+    { amount: 56, price: 104 },
+    { amount: 86, price: 127 },
+    { amount: 172, price: 234 },
+    { amount: 257, price: 343 },
+    { amount: 706, price: 874 },
+    { amount: 2195, price: 2588 },
+    { amount: 3688, price: 4292 },
+    { amount: 5532, price: 6342 },
+    { amount: 9288, price: 10700 }
 ];
 
 app.get('/', (req, res) => {
@@ -120,8 +120,10 @@ async function editToDiamondsMenu(chatId, messageId) {
     let currentRow = [];
 
     diamondsData.forEach((d, index) => {
+        const amountText = typeof d.amount === 'number' ? `${d.amount}💎` : d.amount;
+        
         currentRow.push({
-            text: `${d.amount} — ${d.price.toLocaleString('ru-RU')} ${currency}`,
+            text: `${amountText} — ${d.price.toLocaleString('ru-RU')} ${currency}`,
             callback_data: `diamond_${index}`
         });
 
