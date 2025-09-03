@@ -11,7 +11,6 @@ const bot = new TelegramBot(TOKEN, { polling: true });
 
 let selectedRegion = 'RU';
 
-// Данные о пакетах алмазов в виде объектов
 const diamondsData = [
     { amount: 56, price: 124 },
     { amount: 86, price: 152 },
@@ -34,41 +33,35 @@ app.post('/webhook', (req, res) => {
     } catch (e) {
         console.error('processUpdate error:', e);
     }
-    // Отправляем статус 200, даже если произошла ошибка, чтобы Telegram не повторял запрос.
     res.sendStatus(200);
 });
 
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Добро пожаловать! 👋 Выберите регион:', {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: '🇷🇺 RU', callback_data: 'region_ru' },
-                    { text: '🇰🇬 KG', callback_data: 'region_kg' }
-                ]
-            ],
-        },
-    });
+    showMainMenu(chatId);
 });
 
 bot.on('callback_query', async (q) => {
     const chatId = q.message.chat.id;
     try {
-        if (q.data === 'region_ru') {
+        if (q.data === 'show_regions') {
+            await showRegionMenu(chatId);
+        } else if (q.data === 'region_ru') {
             selectedRegion = 'RU';
-            await showMainMenu(chatId);
+            await showDiamonds(chatId);
         } else if (q.data === 'region_kg') {
             selectedRegion = 'KG';
-            await showMainMenu(chatId);
-        } else if (q.data === 'buy_diamonds') {
             await showDiamonds(chatId);
+        } else if (q.data === 'buy_diamonds') {
+            await showRegionMenu(chatId);
         } else if (q.data === 'reviews') {
             await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
         } else if (q.data === 'leave_review') {
             await bot.sendMessage(chatId, 'Оставить отзыв: @ТВОЙ_НИК');
         } else if (q.data === 'back_to_start') {
             await showMainMenu(chatId);
+        } else if (q.data === 'back_to_regions') {
+            await showRegionMenu(chatId);
         }
         await bot.answerCallbackQuery(q.id);
     } catch (e) {
@@ -90,28 +83,40 @@ async function showMainMenu(chatId) {
     });
 }
 
+async function showRegionMenu(chatId) {
+    await bot.sendMessage(chatId, 'Выберите регион:', {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '🇷🇺 RU', callback_data: 'region_ru' },
+                    { text: '🇰🇬 KG', callback_data: 'region_kg' }
+                ],
+                [{ text: 'Назад 🔙', callback_data: 'back_to_start' }]
+            ],
+        },
+    });
+}
+
 async function showDiamonds(chatId) {
     const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
     const keyboard = [];
     let currentRow = [];
 
-    // Динамически создаем кнопки на основе данных
     diamondsData.forEach((d, index) => {
         currentRow.push({
             text: `${d.amount} Diamonds — ${d.price.toLocaleString('ru-RU')} ${currency}`,
             callback_data: `diamond_${d.amount}`
         });
 
-        // Добавляем строку в клавиатуру, когда в ней 2 элемента
         if (currentRow.length === 2 || index === diamondsData.length - 1) {
             keyboard.push(currentRow);
             currentRow = [];
         }
     });
 
-    keyboard.push([{ text: 'Назад 🔙', callback_data: 'back_to_start' }]);
+    keyboard.push([{ text: 'Назад 🔙', callback_data: 'back_to_regions' }]);
 
-    await bot.sendMessage(chatId, 'Выберите пакет алмазов:', {
+    await bot.sendMessage(chatId, `Выберите пакет алмазов (сейчас выбран регион: ${selectedRegion}):`, {
         reply_markup: { inline_keyboard: keyboard },
     });
 }
