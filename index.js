@@ -1,6 +1,7 @@
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const { MongoClient } = require('mongodb');
+const axios = require('axios');
 
 const app = express();
 app.use(express.json());
@@ -8,6 +9,8 @@ app.use(express.json());
 const PORT = process.env.PORT;
 const TOKEN = process.env.TOKEN || '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 const MONGO_URI = process.env.MONGO_URI;
+
+const CRYPTOCLOUD_API_KEY = 'tupMgUWPHW4a1mvdb0oarSMln4P7AFRGxbBJtorHaxw';
 
 const bot = new TelegramBot(TOKEN);
 const client = new MongoClient(MONGO_URI);
@@ -60,7 +63,41 @@ app.get('/', (req, res) => {
     res.send('Сервер работает!');
 });
 
-app.post('/webhook', (req, res) => {
+app.post('/webhook', async (req, res) => {
+    try {
+        const data = req.body;
+        
+        if (data.status === 'success') {
+            const userId = data.payload.chatId;
+
+            const usersCollection = db.collection('users');
+            const user = await usersCollection.findOne({ chatId: userId });
+            let purchases = user ? user.purchases : 0;
+            purchases++;
+
+            await usersCollection.updateOne(
+                { chatId: userId },
+                { $set: { purchases: purchases, lastPurchase: new Date() } },
+                { upsert: true }
+            );
+
+            await bot.sendMessage(userId, '✅ **Ваша оплата подтверждена!** Мы пополним ваш аккаунт в ближайшее время. Спасибо за покупку!', { parse_mode: 'Markdown' });
+            
+            if (purchases % 5 === 0) {
+                await bot.sendMessage(userId, `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
+            }
+            
+            await bot.sendMessage(adminChatId, `✅ **Новая оплата через CryptoCloud!**\nПользователь: ${data.payload.username}\nСумма: ${data.amount} ${data.currency}`);
+        }
+
+        res.sendStatus(200);
+    } catch (e) {
+        console.error('Webhook error:', e);
+        res.sendStatus(500);
+    }
+});
+
+app.post('/webhook_telegram', (req, res) => {
     try {
         bot.processUpdate(req.body);
     } catch (e) {
@@ -94,75 +131,68 @@ bot.onText(/\/mybonus/, async (msg) => {
 
 bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
+    const isBotCommand = msg.text && msg.text.startsWith('/');
 
-    if (waitingForAction[chatId]) {
+    if (waitingForAction[chatId] && !isBotCommand) {
         if (waitingForAction[chatId].step === 'playerId') {
             const playerId = msg.text;
             const orderData = waitingForAction[chatId];
             const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[orderData.index];
-            const currency = orderData.region === 'RU' ? '₽' : 'KGS';
+            const currency = selectedRegion === 'RU' ? 'RUB' : 'KGS';
 
-            const adminMessage =
-                `📢 **НОВЫЙ ЗАКАЗ**\n\n` +
-                `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
-                `**Сумма:** ${selectedItem.price} ${currency}\n` +
-                `**Пользователь:** ${msg.from.username ? `@${msg.from.username}` : msg.from.first_name}\n` +
-                `**ID пользователя:** ${msg.from.id}\n` +
-                `**ID игрока MLBB:** ${playerId}`;
-            
-            await bot.sendMessage(adminChatId, adminMessage, { parse_mode: 'Markdown' });
+            const userFirstName = msg.from.first_name;
+            const userUsername = msg.from.username;
 
-            const userMessageText =
-                `К оплате ${selectedItem.price} ${currency}.\n\n` +
-                `**Переведите средства на:**\n` +
-                `[ВАШИ РЕКВИЗИТЫ]\n\n` +
-                `*После оплаты нажмите "Я оплатил ✅".*`;
-            
-            await bot.sendMessage(
-                chatId,
-                userMessageText,
-                {
-                    parse_mode: 'Markdown',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [{ text: 'Я оплатил ✅', callback_data: `paid` }],
-                            [{ text: 'Назад', callback_data: 'back_to_regions' }]
-                        ]
+            try {
+                const response = await axios.post('https://api.cryptocloud.plus/v1/invoice/create', {
+                    amount: selectedItem.price,
+                    currency: currency,
+                    order_id: `order_${Date.now()}_${chatId}`,
+                    payload: {
+                        chatId: chatId,
+                        username: userUsername || userFirstName,
+                        playerId: playerId,
+                        item: `${selectedItem.amount} ${currency}`
+                    },
+                    email: null
+                }, {
+                    headers: {
+                        'Authorization': `Token ${CRYPTOCLOUD_API_KEY}`,
+                        'Content-Type': 'application/json'
                     }
-                }
-            );
+                });
+
+                const paymentLink = response.data.result.link;
+                
+                const adminMessage =
+                    `📢 **НОВЫЙ ЗАКАЗ**\n\n` +
+                    `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
+                    `**Сумма:** ${selectedItem.price} ${currency}\n` +
+                    `**Пользователь:** ${userUsername ? `@${userUsername}` : userFirstName}\n` +
+                    `**ID пользователя:** ${msg.from.id}\n` +
+                    `**ID игрока MLBB:** ${playerId}`;
+                
+                await bot.sendMessage(adminChatId, adminMessage, { parse_mode: 'Markdown' });
+
+                await bot.sendMessage(
+                    chatId,
+                    `К оплате ${selectedItem.price} ${currency}.`,
+                    {
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: 'Оплатить ✅', url: paymentLink }],
+                                [{ text: 'Назад', callback_data: 'back_to_regions' }]
+                            ]
+                        }
+                    }
+                );
+            } catch (e) {
+                console.error('CryptoCloud API error:', e.response ? e.response.data : e.message);
+                await bot.sendMessage(chatId, 'К сожалению, произошла ошибка при создании платежа. Попробуйте еще раз.');
+            }
 
             delete waitingForAction[chatId];
-        } else if (waitingForAction[chatId].step === 'screenshot' && msg.photo) {
-            const photoId = msg.photo[msg.photo.length - 1].file_id;
-            const userId = msg.from.id;
-            const userFirstName = msg.from.first_name;
-
-            const adminMessage =
-                `❗️ **ОЖИДАЕТ ПОДТВЕРЖДЕНИЯ**\n\n` +
-                `**Пользователь:** ${userFirstName}\n` +
-                `**ID пользователя:** ${userId}\n` +
-                `**Действие:** Проверить оплату по скриншоту.`
-
-            await bot.sendPhoto(adminChatId, photoId, {
-                caption: adminMessage,
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: '✅ Подтвердить оплату', callback_data: `confirm_payment_${userId}` },
-                            { text: '❌ Отклонить оплату', callback_data: `decline_payment_${userId}` }
-                        ]
-                    ]
-                }
-            });
-
-            await bot.sendMessage(
-                chatId,
-                'Спасибо! Ваш скриншот отправлен на проверку. Пожалуйста, ожидайте подтверждения.'
-            );
-
-            waitingForAction[chatId] = { step: 'waiting_for_admin_approval' };
         }
     }
 });
@@ -172,68 +202,7 @@ bot.on('callback_query', async (q) => {
     const messageId = q.message.message_id;
 
     try {
-        if (q.data.startsWith('confirm_payment_')) {
-            const userId = parseInt(q.data.split('_')[2]);
-            const usersCollection = db.collection('users');
-            
-            const user = await usersCollection.findOne({ chatId: userId });
-            let purchases = user ? user.purchases : 0;
-            purchases++;
-
-            await usersCollection.updateOne(
-                { chatId: userId },
-                { $set: { purchases: purchases, lastPurchase: new Date() } },
-                { upsert: true }
-            );
-
-            await bot.sendMessage(userId, '✅ **Ваша оплата подтверждена!** Мы пополним ваш аккаунт в ближайшее время. Спасибо за покупку!', { parse_mode: 'Markdown' });
-            
-            if (purchases % 5 === 0) {
-                await bot.sendMessage(userId, `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
-            }
-            
-            await bot.editMessageText(`✅ **Оплата подтверждена.**\n\nПользователь: ${q.from.username || q.from.first_name}\n\nСчётчик покупок обновлён в базе данных.`, {
-                chat_id: chatId,
-                message_id: messageId,
-                parse_mode: 'Markdown'
-            });
-            delete waitingForAction[userId];
-
-
-        } else if (q.data.startsWith('decline_payment_')) {
-            const userId = parseInt(q.data.split('_')[2]);
-
-            const userMessageText =
-                `❌ **Извините, ваша оплата не прошла.**` +
-                `\n\nУбедитесь в действительности вашей транзакции.` +
-                `\nЕсли все правильно, и вы перевели деньги по правильному реквизиту, нажмите кнопку ниже:`;
-            
-            await bot.sendMessage(userId, userMessageText, {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: 'Проверить снова', callback_data: `resend_screenshot_${userId}` }]
-                    ]
-                }
-            });
-            
-            await bot.editMessageText(`❌ **Оплата отклонена.**\n\nПользователь: ${q.from.username || q.from.first_name}`, {
-                chat_id: chatId,
-                message_id: messageId,
-                parse_mode: 'Markdown'
-            });
-            delete waitingForAction[userId];
-
-        } else if (q.data.startsWith('resend_screenshot_')) {
-            const userId = parseInt(q.data.split('_')[2]);
-
-            if (waitingForAction[userId] && waitingForAction[userId].step === 'waiting_for_admin_approval') {
-                await bot.sendMessage(userId, 'Подождите, ваш платеж в процессе одобрения.', { parse_mode: 'Markdown' });
-            } else {
-                await bot.sendMessage(userId, 'Пожалуйста, **пришлите скриншот** вашей оплаты ещё раз.');
-                waitingForAction[userId] = { step: 'screenshot' };
-            }
-        } else if (q.data === 'buy_diamonds') {
+        if (q.data === 'buy_diamonds') {
             await editToRegionMenu(chatId, messageId);
         } else if (q.data === 'region_ru') {
             selectedRegion = 'RU';
@@ -262,10 +231,6 @@ bot.on('callback_query', async (q) => {
             };
 
             await bot.sendMessage(chatId, `Вы выбрали **${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}** за **${selectedItem.price}** ${selectedRegion === 'RU' ? '₽' : 'KGS'}. Пожалуйста, отправьте мне ID своего аккаунта MLBB:`, { parse_mode: 'Markdown' });
-        } else if (q.data === 'paid') {
-            const userFirstName = q.from.first_name;
-            await bot.sendMessage(chatId, `Спасибо, ${userFirstName}! Теперь, пожалуйста, **пришлите скриншот** вашей оплаты.`);
-            waitingForAction[chatId] = { step: 'screenshot' };
         }
         await bot.answerCallbackQuery(q.id);
     } catch (e) {
