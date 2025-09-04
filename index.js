@@ -1,18 +1,36 @@
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
+const { MongoClient } = require('mongodb');
 
 const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT;
-const TOKEN = '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
+const TOKEN = process.env.TOKEN || '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
+
+
+const MONGO_URI = process.env.MONGO_URI;
 
 const bot = new TelegramBot(TOKEN);
+const client = new MongoClient(MONGO_URI);
 
 const adminChatId = 895583535;
 
 const waitingForAction = {};
 let selectedRegion = 'RU';
+let db;
+
+async function connectToDb() {
+    try {
+        await client.connect();
+        db = client.db('bot_db');
+        console.log("Connected to MongoDB");
+    } catch (e) {
+        console.error("Failed to connect to MongoDB", e);
+    }
+}
+
+connectToDb();
 
 const diamondsDataRU = [
     { amount: 56, price: 124 },
@@ -56,6 +74,24 @@ app.post('/webhook', (req, res) => {
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
     showMainMenu(chatId);
+});
+
+bot.onText(/\/mybonus/, async (msg) => {
+    const chatId = msg.chat.id;
+    if (!db) {
+        await bot.sendMessage(chatId, 'Ошибка: база данных не подключена.');
+        return;
+    }
+    const usersCollection = db.collection('users');
+    const user = await usersCollection.findOne({ chatId: chatId });
+    const purchases = user ? user.purchases : 0;
+    const untilBonus = 5 - (purchases % 5);
+
+    if (purchases === 0) {
+        await bot.sendMessage(chatId, `У вас пока нет покупок. Совершите 5 покупок, чтобы получить бонус!`);
+    } else {
+        await bot.sendMessage(chatId, `Вы совершили ${purchases} покупок. Осталось ${untilBonus} до получения бонуса!`);
+    }
 });
 
 bot.on('message', async (msg) => {
@@ -104,6 +140,22 @@ bot.on('message', async (msg) => {
             const photoId = msg.photo[msg.photo.length - 1].file_id;
 
             await bot.sendPhoto(adminChatId, photoId, { caption: `Скриншот оплаты от пользователя: ${msg.from.username ? `@${msg.from.username}` : msg.from.first_name}` });
+
+            const usersCollection = db.collection('users');
+            const user = await usersCollection.findOne({ chatId: chatId });
+            let purchases = user ? user.purchases : 0;
+            purchases++;
+
+            await usersCollection.updateOne(
+                { chatId: chatId },
+                { $set: { purchases: purchases, lastPurchase: new Date() } },
+                { upsert: true }
+            );
+
+            if (purchases % 5 === 0) {
+                await bot.sendMessage(chatId, `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**\nМы пополним ваш аккаунт вместе с основным заказом.`);
+                await bot.sendMessage(adminChatId, `🔥 **БОНУС!** Пользователь ${msg.from.username} получил бонус за ${purchases} покупок.`);
+            }
 
             await bot.sendMessage(
                 chatId,
