@@ -162,7 +162,7 @@ bot.on('message', async (msg) => {
                 'Спасибо! Ваш скриншот отправлен на проверку. Пожалуйста, ожидайте подтверждения.'
             );
 
-            delete waitingForAction[chatId];
+            waitingForAction[chatId] = { step: 'waiting_for_admin_approval' };
         }
     }
 });
@@ -197,18 +197,42 @@ bot.on('callback_query', async (q) => {
                 message_id: messageId,
                 parse_mode: 'Markdown'
             });
+            delete waitingForAction[userId];
+
 
         } else if (q.data.startsWith('decline_payment_')) {
             const userId = parseInt(q.data.split('_')[2]);
 
-            await bot.sendMessage(userId, '❌ **Оплата отклонена.** Пожалуйста, проверьте правильность скриншота или попробуйте снова.', { parse_mode: 'Markdown' });
+            const userMessageText =
+                `❌ **Извините, ваша оплата не прошла.**` +
+                `\n\nУбедитесь в действительности вашей транзакции.` +
+                `\nЕсли все правильно, и вы перевели деньги по правильному реквизиту, нажмите кнопку ниже:`;
+            
+            await bot.sendMessage(userId, userMessageText, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: 'Проверить снова', callback_data: `resend_screenshot_${userId}` }]
+                    ]
+                }
+            });
             
             await bot.editMessageText(`❌ **Оплата отклонена.**\n\nПользователь: ${q.from.username || q.from.first_name}`, {
                 chat_id: chatId,
                 message_id: messageId,
                 parse_mode: 'Markdown'
             });
+            delete waitingForAction[userId];
 
+        } else if (q.data.startsWith('resend_screenshot_')) {
+            const userId = parseInt(q.data.split('_')[2]);
+
+            if (waitingForAction[userId] && waitingForAction[userId].step === 'waiting_for_admin_approval') {
+                await bot.sendMessage(userId, 'Подождите, ваш платеж в процессе одобрения.', { parse_mode: 'Markdown' });
+            } else {
+                await bot.sendMessage(userId, 'Пожалуйста, **пришлите скриншот** вашей оплаты ещё раз.');
+                waitingForAction[userId] = { step: 'screenshot' };
+            }
         } else if (q.data === 'buy_diamonds') {
             await editToRegionMenu(chatId, messageId);
         } else if (q.data === 'region_ru') {
