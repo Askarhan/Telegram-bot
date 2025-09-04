@@ -10,7 +10,7 @@ const PORT = process.env.PORT;
 const TOKEN = process.env.TOKEN || '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 const MONGO_URI = process.env.MONGO_URI;
 
-const CRYPTOCLOUD_API_KEY = 'o0arSMln4P7AFRGxbBJtorHaxw';
+const CRYPTOCLOUD_API_KEY = '6Pi76JVyHST5yALH';
 
 const bot = new TelegramBot(TOKEN);
 const client = new MongoClient(MONGO_URI);
