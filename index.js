@@ -12,7 +12,6 @@ const bot = new TelegramBot(TOKEN);
 const adminChatId = 895583535;
 
 const waitingForAction = {};
-
 let selectedRegion = 'RU';
 
 const diamondsDataRU = [
@@ -22,9 +21,9 @@ const diamondsDataRU = [
     { amount: 257, price: 411 },
     { amount: 706, price: 1224 },
     { amount: 2195, price: 3105 },
-    { amount: 3688, price: 5069 },
-    { amount: 5532, price: 7446 },
-    { amount: 9288, price: 12980 }
+    { amount: 3688, price: 4292 },
+    { amount: 5532, price: 6342 },
+    { amount: 9288, price: 10700 }
 ];
 
 const diamondsDataKG = [
@@ -70,7 +69,6 @@ bot.on('message', async (msg) => {
             const selectedItem = diamondsData[orderData.index];
             const currency = orderData.region === 'RU' ? '₽' : 'KGS';
 
-        
             const adminMessage =
                 `📢 **НОВЫЙ ЗАКАЗ**\n\n` +
                 `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
@@ -81,7 +79,6 @@ bot.on('message', async (msg) => {
             
             await bot.sendMessage(adminChatId, adminMessage, { parse_mode: 'Markdown' });
 
-        
             const userMessageText =
                 `К оплате ${selectedItem.price} ${currency}.\n\n` +
                 `**Переведите средства на:**\n` +
@@ -102,10 +99,8 @@ bot.on('message', async (msg) => {
                 }
             );
 
-        
             delete waitingForAction[chatId];
         } else if (waitingForAction[chatId].step === 'screenshot' && msg.photo) {
-            
             const photoId = msg.photo[msg.photo.length - 1].file_id;
 
             await bot.sendPhoto(adminChatId, photoId, { caption: `Скриншот оплаты от пользователя: ${msg.from.username ? `@${msg.from.username}` : msg.from.first_name}` });
@@ -128,15 +123,11 @@ bot.on('callback_query', async (q) => {
         if (q.data === 'buy_diamonds') {
             await editToRegionMenu(chatId, messageId);
         } else if (q.data === 'region_ru') {
-            if (selectedRegion !== 'RU') {
-                selectedRegion = 'RU';
-                await editToDiamondsMenu(chatId, messageId);
-            }
+            selectedRegion = 'RU';
+            await editToDiamondsMenu(chatId, messageId);
         } else if (q.data === 'region_kg') {
-            if (selectedRegion !== 'KG') {
-                selectedRegion = 'KG';
-                await editToDiamondsMenu(chatId, messageId);
-            }
+            selectedRegion = 'KG';
+            await editToDiamondsMenu(chatId, messageId);
         } else if (q.data === 'reviews') {
             await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
         } else if (q.data === 'leave_review') {
@@ -148,102 +139,4 @@ bot.on('callback_query', async (q) => {
         } else if (q.data.startsWith('diamond_')) {
             const selectedItemIndex = q.data.split('_')[1];
             const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
-            const selectedItem = diamondsData[selectedItemIndex];
-
-            waitingForAction[chatId] = {
-                step: 'playerId',
-                index: selectedItemIndex,
-                region: selectedRegion,
-                item: selectedItem
-            };
-
-            await bot.sendMessage(chatId, `Вы выбрали **${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}** за **${selectedItem.price}** ${selectedRegion === 'RU' ? '₽' : 'KGS'}. Пожалуйста, отправьте мне ID своего аккаунта MLBB:`, { parse_mode: 'Markdown' });
-        } else if (q.data === 'paid') {
-            const userFirstName = q.from.first_name;
-            await bot.sendMessage(chatId, `Спасибо, ${userFirstName}! Теперь, пожалуйста, **пришлите скриншот** вашей оплаты.`);
-            waitingForAction[chatId] = { step: 'screenshot' };
-        }
-        await bot.answerCallbackQuery(q.id);
-    } catch (e) {
-        console.error('callback error:', e);
-    }
-});
-
-async function showMainMenu(chatId) {
-    await bot.sendMessage(chatId, 'Главное меню:', {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
-                    { text: 'Отзывы 💖', callback_data: 'reviews' }
-                ],
-                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
-            ]
-        }
-    });
-}
-
-async function editToRegionMenu(chatId, messageId) {
-    await bot.editMessageText('Выберите регион:', {
-        chat_id: chatId,
-        message_id: messageId,
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: '🇷🇺 RU', callback_data: 'region_ru' },
-                    { text: '🇰🇬 KG', callback_data: 'region_kg' }
-                ],
-                [{ text: 'Назад 🔙', callback_data: 'back_to_start' }]
-            ],
-        },
-    });
-}
-
-async function editToDiamondsMenu(chatId, messageId) {
-    const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
-    const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
-    const keyboard = [];
-    let currentRow = [];
-
-    diamondsData.forEach((d, index) => {
-        const amountText = typeof d.amount === 'number' ? `${d.amount}💎` : d.amount;
-        
-        currentRow.push({
-            text: `${amountText} — ${d.price.toLocaleString('ru-RU')} ${currency}`,
-            callback_data: `diamond_${index}`
-        });
-
-        if (currentRow.length === 2 || index === diamondsData.length - 1) {
-            keyboard.push(currentRow);
-            currentRow = [];
-        }
-    });
-
-    keyboard.push([{ text: 'Назад 🔙', callback_data: 'back_to_regions' }]);
-
-    await bot.editMessageText(`Выберите пакет алмазов (сейчас выбран регион: ${selectedRegion}):`, {
-        chat_id: chatId,
-        message_id: messageId,
-        reply_markup: { inline_keyboard: keyboard },
-    });
-}
-
-async function editToMainMenu(chatId, messageId) {
-    await bot.editMessageText('Главное меню:', {
-        chat_id: chatId,
-        message_id: messageId,
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
-                    { text: 'Отзывы 💖', callback_data: 'reviews' }
-                ],
-                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
-            ]
-        }
-    });
-}
-
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
+            const selectedItem =
