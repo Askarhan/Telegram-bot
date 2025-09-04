@@ -139,4 +139,102 @@ bot.on('callback_query', async (q) => {
         } else if (q.data.startsWith('diamond_')) {
             const selectedItemIndex = q.data.split('_')[1];
             const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
-            const selectedItem =
+            const selectedItem = diamondsData[selectedItemIndex];
+
+            waitingForAction[chatId] = {
+                step: 'playerId',
+                index: selectedItemIndex,
+                region: selectedRegion,
+                item: selectedItem
+            };
+
+            await bot.sendMessage(chatId, `Вы выбрали **${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}** за **${selectedItem.price}** ${selectedRegion === 'RU' ? '₽' : 'KGS'}. Пожалуйста, отправьте мне ID своего аккаунта MLBB:`, { parse_mode: 'Markdown' });
+        } else if (q.data === 'paid') {
+            const userFirstName = q.from.first_name;
+            await bot.sendMessage(chatId, `Спасибо, ${userFirstName}! Теперь, пожалуйста, **пришлите скриншот** вашей оплаты.`);
+            waitingForAction[chatId] = { step: 'screenshot' };
+        }
+        await bot.answerCallbackQuery(q.id);
+    } catch (e) {
+        console.error('callback error:', e);
+    }
+});
+
+async function showMainMenu(chatId) {
+    await bot.sendMessage(chatId, 'Главное меню:', {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
+                    { text: 'Отзывы 💖', callback_data: 'reviews' }
+                ],
+                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
+            ]
+        }
+    });
+}
+
+async function editToRegionMenu(chatId, messageId) {
+    await bot.editMessageText('Выберите регион:', {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: '🇷🇺 RU', callback_data: 'region_ru' },
+                    { text: '🇰🇬 KG', callback_data: 'region_kg' }
+                ],
+                [{ text: 'Назад 🔙', callback_data: 'back_to_start' }]
+            ],
+        },
+    });
+}
+
+async function editToDiamondsMenu(chatId, messageId) {
+    const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
+    const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
+    const keyboard = [];
+    let currentRow = [];
+
+    diamondsData.forEach((d, index) => {
+        const amountText = typeof d.amount === 'number' ? `${d.amount}💎` : d.amount;
+        
+        currentRow.push({
+            text: `${amountText} — ${d.price.toLocaleString('ru-RU')} ${currency}`,
+            callback_data: `diamond_${index}`
+        });
+
+        if (currentRow.length === 2 || index === diamondsData.length - 1) {
+            keyboard.push(currentRow);
+            currentRow = [];
+        }
+    });
+
+    keyboard.push([{ text: 'Назад 🔙', callback_data: 'back_to_regions' }]);
+
+    await bot.editMessageText(`Выберите пакет алмазов (сейчас выбран регион: ${selectedRegion}):`, {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: { inline_keyboard: keyboard },
+    });
+}
+
+async function editToMainMenu(chatId, messageId) {
+    await bot.editMessageText('Главное меню:', {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
+                    { text: 'Отзывы 💖', callback_data: 'reviews' }
+                ],
+                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
+            ]
+        }
+    });
+}
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
