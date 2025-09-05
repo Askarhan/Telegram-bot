@@ -139,60 +139,60 @@ bot.on('message', async (msg) => {
             const orderData = waitingForAction[chatId];
             const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[orderData.index];
-            const currency = selectedRegion === 'RU' ? 'RUB' : 'KGS';
+            const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
 
-            const userFirstName = msg.from.first_name;
+            // Сохраняем данные для платежа
+            waitingForAction[chatId].step = 'paymentChoice';
+            waitingForAction[chatId].playerId = playerId;
+            
+            await bot.sendMessage(chatId, 
+                `Вы выбрали **${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}** ` +
+                `Стоимость: **${selectedItem.price}** ${currency} 💰\n` +
+                `Пожалуйста, оплатите данную покупку, выбрав удобный вам способ оплаты!`,
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: 'Оплата переводом', callback_data: `pay_transfer_${orderData.index}` }],
+                            [{ text: 'Оплата криптовалютой', callback_data: `pay_crypto_${orderData.index}` }]
+                        ]
+                    }
+                }
+            );
+
+        } else if (waitingForAction[chatId].step === 'transfer_confirm') {
+            const orderData = waitingForAction[chatId];
+            const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
+            const selectedItem = diamondsData[orderData.index];
+            const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
             const userUsername = msg.from.username;
+            const userFirstName = msg.from.first_name;
+            
+            const adminMessage = 
+                `📢 **НОВЫЙ ЗАКАЗ (Оплата переводом)**\n\n` +
+                `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
+                `**Сумма:** ${selectedItem.price} ${currency}\n` +
+                `**Пользователь:** ${userUsername ? `@${userUsername}` : userFirstName}\n` +
+                `**ID пользователя:** ${msg.from.id}\n` +
+                `**ID игрока MLBB:** ${orderData.playerId}\n` +
+                `**Ожидает подтверждения: скриншот был отправлен.**`;
 
-            try {
-                const response = await axios.post('https://api.cryptocloud.plus/v1/invoice/create', {
-                    amount: selectedItem.price,
-                    currency: currency,
-                    order_id: `order_${Date.now()}_${chatId}`,
-                    payload: {
-                        chatId: chatId,
-                        username: userUsername || userFirstName,
-                        playerId: playerId,
-                        item: `${selectedItem.amount} ${currency}`
-                    },
-                    email: null
-                }, {
-                    headers: {
-                        'Authorization': `Token ${CRYPTOCLOUD_API_KEY}`,
-                        'Content-Type': 'application/json'
+            if (msg.photo) {
+                await bot.sendPhoto(adminChatId, msg.photo[msg.photo.length - 1].file_id, {
+                    caption: adminMessage,
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '✅ Подтвердить', callback_data: `confirm_payment_${chatId}` }],
+                            [{ text: '❌ Отклонить', callback_data: `decline_payment_${chatId}` }]
+                        ]
                     }
                 });
-
-                const paymentLink = response.data.result.link;
-                
-                const adminMessage =
-                    `📢 **НОВЫЙ ЗАКАЗ**\n\n` +
-                    `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
-                    `**Сумма:** ${selectedItem.price} ${currency}\n` +
-                    `**Пользователь:** ${userUsername ? `@${userUsername}` : userFirstName}\n` +
-                    `**ID пользователя:** ${msg.from.id}\n` +
-                    `**ID игрока MLBB:** ${playerId}`;
-                
-                await bot.sendMessage(adminChatId, adminMessage, { parse_mode: 'Markdown' });
-
-                await bot.sendMessage(
-                    chatId,
-                    `К оплате ${selectedItem.price} ${currency}.`,
-                    {
-                        reply_markup: {
-                            inline_keyboard: [
-                                [{ text: 'Оплатить ✅', url: paymentLink }],
-                                [{ text: 'Назад', callback_data: 'back_to_regions' }]
-                            ]
-                        }
-                    }
-                );
-            } catch (e) {
-                console.error('CryptoCloud API error:', e.response ? e.response.data : e.message);
-                await bot.sendMessage(chatId, 'К сожалению, произошла ошибка при создании платежа. Попробуйте еще раз.');
+                await bot.sendMessage(chatId, '✅ **Ваш скриншот отправлен на проверку.** Мы сообщим вам, как только оплата будет подтверждена!', { parse_mode: 'Markdown' });
+                delete waitingForAction[chatId];
+            } else {
+                await bot.sendMessage(chatId, 'Пожалуйста, отправьте именно скриншот (изображение), а не другой тип файла.');
             }
-
-            delete waitingForAction[chatId];
         }
     }
 });
@@ -231,7 +231,115 @@ bot.on('callback_query', async (q) => {
             };
 
             await bot.sendMessage(chatId, `Вы выбрали **${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}** за **${selectedItem.price}** ${selectedRegion === 'RU' ? '₽' : 'KGS'}. Пожалуйста, отправьте мне ID своего аккаунта MLBB:`, { parse_mode: 'Markdown' });
+        
+        } else if (q.data.startsWith('pay_transfer_')) {
+            const [, , index] = q.data.split('_');
+            const orderData = waitingForAction[chatId];
+            const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
+            const selectedItem = diamondsData[index];
+            const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
+            
+            waitingForAction[chatId].step = 'transfer_confirm';
+
+            const paymentDetails = 
+                `📢 **ВНИМАНИЕ! Перевод будет выполняться в Кыргызстан (страна СНГ).**\n\n` +
+                `Будьте внимательны: если оплата не пройдет по независящим от нас причинам, мы не сможем нести за это ответственность.\n` +
+                `Спасибо за понимание. С любовью, ANNUR DIAMONDS 💎\n\n` +
+                `**Сумма к оплате: ${selectedItem.price} ${currency}**\n\n` +
+                `**Реквизиты для оплаты:**\n` +
+                `**Получатель:** Аскар.С\n` +
+                `**Mbank:** +996707711770 / 4177490184319665\n` +
+                `**Банк Компаньон:** +996707711770 (прямой перевод по номеру телефона)\n` +
+                `\nПосле оплаты отправьте скриншот чека в этот чат.`;
+
+            await bot.sendMessage(chatId, paymentDetails, { parse_mode: 'Markdown' });
+
+        } else if (q.data.startsWith('pay_crypto_')) {
+            const [, , index] = q.data.split('_');
+            const orderData = waitingForAction[chatId];
+            const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
+            const selectedItem = diamondsData[index];
+            const currency = selectedRegion === 'RU' ? 'RUB' : 'KGS';
+
+            const userFirstName = q.from.first_name;
+            const userUsername = q.from.username;
+
+            try {
+                const response = await axios.post('https://api.cryptocloud.plus/v1/invoice/create', {
+                    amount: selectedItem.price,
+                    currency: currency,
+                    order_id: `order_${Date.now()}_${chatId}`,
+                    payload: {
+                        chatId: chatId,
+                        username: userUsername || userFirstName,
+                        playerId: orderData.playerId,
+                        item: `${selectedItem.amount} ${currency}`
+                    },
+                    email: null
+                }, {
+                    headers: {
+                        'Authorization': `Token ${CRYPTOCLOUD_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const paymentLink = response.data.result.link;
+                
+                const adminMessage =
+                    `📢 **НОВЫЙ ЗАКАЗ**\n\n` +
+                    `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
+                    `**Сумма:** ${selectedItem.price} ${currency}\n` +
+                    `**Пользователь:** ${userUsername ? `@${userUsername}` : userFirstName}\n` +
+                    `**ID пользователя:** ${q.from.id}\n` +
+                    `**ID игрока MLBB:** ${orderData.playerId}`;
+                
+                await bot.sendMessage(adminChatId, adminMessage, { parse_mode: 'Markdown' });
+
+                await bot.sendMessage(
+                    chatId,
+                    `К оплате **${selectedItem.price} ${currency}**.\n\n` +
+                    `Оплата криптовалютой через CryptoCloud.`,
+                    {
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: 'Оплатить ✅', url: paymentLink }],
+                                [{ text: 'Назад', callback_data: 'back_to_regions' }]
+                            ]
+                        }
+                    }
+                );
+            } catch (e) {
+                console.error('CryptoCloud API error:', e.response ? e.response.data : e.message);
+                await bot.sendMessage(chatId, 'К сожалению, произошла ошибка при создании платежа. Попробуйте еще раз.');
+            }
+            
+        } else if (q.data.startsWith('confirm_payment_')) {
+            const userIdToConfirm = q.data.split('_')[2];
+            await bot.sendMessage(userIdToConfirm, `✅ **Ваша оплата подтверждена!** Мы пополним ваш аккаунт в ближайшее время. Спасибо за покупку!`, { parse_mode: 'Markdown' });
+            await bot.sendMessage(chatId, 'Подтверждение отправлено пользователю.');
+
+            const usersCollection = db.collection('users');
+            const user = await usersCollection.findOne({ chatId: parseInt(userIdToConfirm) });
+            let purchases = user ? user.purchases : 0;
+            purchases++;
+
+            await usersCollection.updateOne(
+                { chatId: parseInt(userIdToConfirm) },
+                { $set: { purchases: purchases, lastPurchase: new Date() } },
+                { upsert: true }
+            );
+
+            if (purchases % 5 === 0) {
+                await bot.sendMessage(parseInt(userIdToConfirm), `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
+            }
+
+        } else if (q.data.startsWith('decline_payment_')) {
+            const userIdToDecline = q.data.split('_')[2];
+            await bot.sendMessage(userIdToDecline, '❌ **Ваша оплата отклонена.** Пожалуйста, проверьте правильность платежа и повторите попытку.', { parse_mode: 'Markdown' });
+            await bot.sendMessage(chatId, 'Отказ отправлен пользователю.');
         }
+
         await bot.answerCallbackQuery(q.id);
     } catch (e) {
         console.error('callback error:', e);
