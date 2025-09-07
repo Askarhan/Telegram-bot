@@ -10,6 +10,7 @@ const PORT = process.env.PORT;
 const TOKEN = process.env.TOKEN || '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 const MONGO_URI = process.env.MONGO_URI;
 
+
 const CRYPTOCLOUD_API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1dWlkIjoiTmprMk5URT0iLCJ0eXBlIjoicHJvamVjdCIsInYiOiI4YTFlZTY2NzU3YmZiNGJmMzk2NWZiOTQyM2ZjZTI2N2I3MTllMjEyNWZkMmJjNWMzNWExMTNkMTcyZThlMWU5IiwiZXhwIjo4ODE1NjkyODU5NX0.tupMgUWPHW4a1mvdb0oarSMln4P7AFRGxbBJtorHaxw';
 const CRYPTOCLOUD_SHOP_ID = '6Pi76JVyHST5yALH';
 
@@ -35,15 +36,17 @@ async function connectToDb() {
 connectToDb();
 
 const diamondsDataRU = [
+    { amount: 'Недельный алмазный пропуск', price: 217 },
+    { amount: 'Сумеречный пропуск', price: 858 },
     { amount: 56, price: 124 },
     { amount: 86, price: 152 },
     { amount: 172, price: 280 },
     { amount: 257, price: 411 },
     { amount: 706, price: 1224 },
-    { amount: 2195, price: 3105 },
-    { amount: 3688, price: 4292 },
-    { amount: 5532, price: 6342 },
-    { amount: 9288, price: 10700 }
+    { amount: 2195, price: 3106 },
+    { amount: 3688, price: 5150 },
+    { amount: 5532, price: 7470 },
+    { amount: 9288, price: 12980 }
 ];
 
 const diamondsDataKG = [
