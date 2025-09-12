@@ -90,16 +90,15 @@ app.post('/webhook', async (req, res) => {
                 await bot.sendMessage(userId, `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
             }
             
-            await bot.sendMessage(adminChatId, `✅ **Новая оплата через CryptoCloud!**\nПользователь: ${data.payload.username}\nСумма: ${data.amount} ${data.currency}`);
-
-            await bot.sendMessage(userId, 'Были рады помочь! Если вам понравился наш сервис, пожалуйста, оставьте отзыв ❤️', {
-                parse_mode: 'Markdown',
+            await bot.sendMessage(adminChatId, `✅ **Новая оплата через CryptoCloud!**\nПользователь: ${data.payload.username}\nСумма: ${data.amount} ${data.currency}`, {
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: 'Оставить отзыв ❤️', callback_data: 'leave_review' }]
+
+                        [{ text: '✅ Заказ выполнен', callback_data: `complete_order_${userId}` }]
                     ]
                 }
             });
+
         }
 
         res.sendStatus(200);
@@ -305,7 +304,15 @@ bot.on('callback_query', async (q) => {
                     `**ID пользователя:** ${q.from.id}\n` +
                     `**ID игрока MLBB:** ${orderData.playerId}`;
                 
-                await bot.sendMessage(adminChatId, adminMessage, { parse_mode: 'Markdown' });
+                await bot.sendMessage(adminChatId, adminMessage, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [
+                            
+                            [{ text: '✅ Заказ выполнен', callback_data: `complete_order_${q.from.id}` }]
+                        ]
+                    }
+                });
 
                 await bot.sendMessage(
                     chatId,
@@ -349,11 +356,10 @@ bot.on('callback_query', async (q) => {
                 await bot.sendMessage(parseInt(userIdToConfirm), `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
             }
 
-            await bot.sendMessage(userIdToConfirm, 'Были рады помочь! Если вам понравился наш сервис, пожалуйста, оставьте отзыв ❤️', {
-                parse_mode: 'Markdown',
+            await bot.sendMessage(chatId, 'Оплата подтверждена. Теперь вы можете пополнить счет клиента и нажать "Заказ выполнен".', {
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: 'Оставить отзыв ❤️', callback_data: 'leave_review' }]
+                        [{ text: '✅ Заказ выполнен', callback_data: `complete_order_${userIdToConfirm}` }]
                     ]
                 }
             });
@@ -362,6 +368,17 @@ bot.on('callback_query', async (q) => {
             const userIdToDecline = q.data.split('_')[2];
             await bot.sendMessage(userIdToDecline, '❌ **Ваша оплата отклонена.** Пожалуйста, проверьте правильность платежа и повторите попытку.', { parse_mode: 'Markdown' });
             await bot.sendMessage(chatId, 'Отказ отправлен пользователю.');
+        } else if (q.data.startsWith('complete_order_')) {
+            const userIdToComplete = q.data.split('_')[2];
+            await bot.sendMessage(userIdToComplete, `🎉 **Ваш заказ выполнен!** 🎉\n\nПожалуйста, проверьте баланс своего аккаунта в игре. Если вам все понравилось, будем рады вашему отзыву.`, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: 'Оставить отзыв ❤️', url: 'https://t.me/annurreviews' }]
+                    ]
+                }
+            });
+            await bot.sendMessage(chatId, 'Сообщение о выполнении заказа отправлено пользователю.');
         }
 
         await bot.answerCallbackQuery(q.id);
