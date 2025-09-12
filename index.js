@@ -10,7 +10,6 @@ const PORT = process.env.PORT;
 const TOKEN = process.env.TOKEN || '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 const MONGO_URI = process.env.MONGO_URI;
 
-
 const CRYPTOCLOUD_API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1dWlkIjoiTmprMk5URT0iLCJ0eXBlIjoicHJvamVjdCIsInYiOiI4YTFlZTY2NzU3YmZiNGJmMzk2NWZiOTQyM2ZjZTI2N2I3MTllMjEyNWZkMmJjNWMzNWExMTNkMTcyZThlMWU5IiwiZXhwIjo4ODE1NjkyODU5NX0.tupMgUWPHW4a1mvdb0oarSMln4P7AFRGxbBJtorHaxw';
 const CRYPTOCLOUD_SHOP_ID = '6Pi76JVyHST5yALH';
 
@@ -92,6 +91,15 @@ app.post('/webhook', async (req, res) => {
             }
             
             await bot.sendMessage(adminChatId, `✅ **Новая оплата через CryptoCloud!**\nПользователь: ${data.payload.username}\nСумма: ${data.amount} ${data.currency}`);
+
+            await bot.sendMessage(userId, 'Были рады помочь! Если вам понравился наш сервис, пожалуйста, оставьте отзыв ❤️', {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: 'Оставить отзыв ❤️', callback_data: 'leave_review' }]
+                    ]
+                }
+            });
         }
 
         res.sendStatus(200);
@@ -214,9 +222,9 @@ bot.on('callback_query', async (q) => {
             selectedRegion = 'KG';
             await editToDiamondsMenu(chatId, messageId);
         } else if (q.data === 'reviews') {
-            await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/ТВОЙ_КАНАЛ');
+            await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/annurreviews');
         } else if (q.data === 'leave_review') {
-            await bot.sendMessage(chatId, 'Оставить отзыв: @ТВОЙ_НИК');
+            await bot.sendMessage(chatId, 'Оставить отзыв вы можете в нашем канале: https://t.me/annurreviews');
         } else if (q.data === 'back_to_start') {
             await editToMainMenu(chatId, messageId);
         } else if (q.data === 'back_to_regions') {
@@ -340,6 +348,15 @@ bot.on('callback_query', async (q) => {
             if (purchases % 5 === 0) {
                 await bot.sendMessage(parseInt(userIdToConfirm), `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
             }
+
+            await bot.sendMessage(userIdToConfirm, 'Были рады помочь! Если вам понравился наш сервис, пожалуйста, оставьте отзыв ❤️', {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: 'Оставить отзыв ❤️', callback_data: 'leave_review' }]
+                    ]
+                }
+            });
 
         } else if (q.data.startsWith('decline_payment_')) {
             const userIdToDecline = q.data.split('_')[2];
