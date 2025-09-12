@@ -10,6 +10,7 @@ const PORT = process.env.PORT;
 const TOKEN = process.env.TOKEN || '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
 const MONGO_URI = process.env.MONGO_URI;
 
+
 const CRYPTOCLOUD_API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1dWlkIjoiTmprMk5URT0iLCJ0eXBlIjoicHJvamVjdCIsInYiOiI4YTFlZTY2NzU3YmZiNGJmMzk2NWZiOTQyM2ZjZTI2N2I3MTllMjEyNWZkMmJjNWMzNWExMTNkMTcyZThlMWU5IiwiZXhwIjo4ODE1NjkyODU5NX0.tupMgUWPHW4a1mvdb0oarSMln4P7AFRGxbBJtorHaxw';
 const CRYPTOCLOUD_SHOP_ID = '6Pi76JVyHST5yALH';
 
@@ -93,7 +94,6 @@ app.post('/webhook', async (req, res) => {
             await bot.sendMessage(adminChatId, `✅ **Новая оплата через CryptoCloud!**\nПользователь: ${data.payload.username}\nСумма: ${data.amount} ${data.currency}`, {
                 reply_markup: {
                     inline_keyboard: [
-
                         [{ text: '✅ Заказ выполнен', callback_data: `complete_order_${userId}` }]
                     ]
                 }
@@ -152,6 +152,7 @@ bot.on('message', async (msg) => {
             const selectedItem = diamondsData[orderData.index];
             const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
 
+            
             waitingForAction[chatId].step = 'paymentChoice';
             waitingForAction[chatId].playerId = playerId;
             
@@ -221,8 +222,10 @@ bot.on('callback_query', async (q) => {
             selectedRegion = 'KG';
             await editToDiamondsMenu(chatId, messageId);
         } else if (q.data === 'reviews') {
+        
             await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/annurreviews');
         } else if (q.data === 'leave_review') {
+            
             await bot.sendMessage(chatId, 'Оставить отзыв вы можете в нашем канале: https://t.me/annurreviews');
         } else if (q.data === 'back_to_start') {
             await editToMainMenu(chatId, messageId);
@@ -308,7 +311,6 @@ bot.on('callback_query', async (q) => {
                     parse_mode: 'Markdown',
                     reply_markup: {
                         inline_keyboard: [
-                            
                             [{ text: '✅ Заказ выполнен', callback_data: `complete_order_${q.from.id}` }]
                         ]
                     }
@@ -356,6 +358,7 @@ bot.on('callback_query', async (q) => {
                 await bot.sendMessage(parseInt(userIdToConfirm), `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
             }
 
+        
             await bot.sendMessage(chatId, 'Оплата подтверждена. Теперь вы можете пополнить счет клиента и нажать "Заказ выполнен".', {
                 reply_markup: {
                     inline_keyboard: [
@@ -393,9 +396,11 @@ async function showMainMenu(chatId) {
             inline_keyboard: [
                 [
                     { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
-                    { text: 'Отзывы 💖', callback_data: 'reviews' }
+                    
+                    { text: 'Отзывы 💖', url: 'https://t.me/annurreviews' }
                 ],
-                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
+                
+                [{ text: 'Оставить отзыв 💌', url: 'https://t.me/annurreviews' }]
             ]
         }
     });
@@ -454,9 +459,9 @@ async function editToMainMenu(chatId, messageId) {
             inline_keyboard: [
                 [
                     { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
-                    { text: 'Отзывы 💖', callback_data: 'reviews' }
+                    { text: 'Отзывы 💖', url: 'https://t.me/annurreviews' }
                 ],
-                [{ text: 'Оставить отзыв 💌', callback_data: 'leave_review' }]
+                [{ text: 'Оставить отзыв 💌', url: 'https://t.me/annurreviews' }]
             ]
         }
     });
