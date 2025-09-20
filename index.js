@@ -1,39 +1,47 @@
+
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const { MongoClient } = require('mongodb');
 const axios = require('axios');
+const crypto = require('crypto'); 
 
 const app = express();
+
 app.use(express.json());
 
-const PORT = process.env.PORT;
-const TOKEN = process.env.TOKEN || '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
+
+const PORT = process.env.PORT || 3000;
+const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const MONGO_URI = process.env.MONGO_URI;
+const CRYPTOCLOUD_API_KEY = process.env.CRYPTOCLOUD_API_KEY;
+const CRYPTOCLOUD_SHOP_ID = process.env.CRYPTOCLOUD_SHOP_ID;
 
 
-const CRYPTOCLOUD_API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1dWlkIjoiTmprMk5URT0iLCJ0eXBlIjoicHJvamVjdCIsInYiOiI4YTFlZTY2NzU3YmZiNGJmMzk2NWZiOTQyM2ZjZTI2N2I3MTllMjEyNWZkMmJjNWMzNWExMTNkMTcyZThlMWU5IiwiZXhwIjo4ODE1NjkyODU5NX0.tupMgUWPHW4a1mvdb0oarSMln4P7AFRGxbBJtorHaxw';
-const CRYPTOCLOUD_SHOP_ID = '6Pi76JVyHST5yALH';
+if (!TOKEN || !MONGO_URI || !CRYPTOCLOUD_API_KEY || !CRYPTOCLOUD_SHOP_ID) {
+    console.error('Ошибка: Один или несколько ключей не найдены в переменных окружения.');
+    process.exit(1);
+}
 
 const bot = new TelegramBot(TOKEN);
 const client = new MongoClient(MONGO_URI);
 
 const adminChatId = 895583535;
 
-const waitingForAction = {};
-let selectedRegion = 'RU';
 let db;
+const waitingForAction = {};
+
 
 async function connectToDb() {
     try {
         await client.connect();
         db = client.db('bot_db');
-        console.log("Connected to MongoDB");
+        console.log("Подключение к MongoDB успешно!");
     } catch (e) {
-        console.error("Failed to connect to MongoDB", e);
+        console.error("Не удалось подключиться к MongoDB", e);
     }
 }
-
 connectToDb();
+
 
 const diamondsDataRU = [
     { amount: 'Недельный алмазный пропуск', price: 217 },
@@ -63,24 +71,45 @@ const diamondsDataKG = [
     { amount: 9288, price: 10700 }
 ];
 
-app.get('/', (req, res) => {
-    res.send('Сервер работает!');
+let selectedRegion = 'RU'; 
+
+
+const webhookUrl = `https://annurdiamonds.shop/bot${TOKEN}`;
+bot.setWebHook(webhookUrl);
+
+
+app.post(`/bot${TOKEN}`, (req, res) => {
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
 });
 
-app.post('/webhook', async (req, res) => {
+
+app.post('/webhook/cryptocloud', async (req, res) => {
     try {
-        const data = req.body;
+        const signature = req.headers['signature']; 
+        const body = JSON.stringify(req.body);
+
         
+        const hash = crypto.createHmac('sha256', CRYPTOCLOUD_API_KEY).update(body).digest('hex');
+        if (hash !== signature) {
+            console.error('Неверная подпись вебхука от CryptoCloud!');
+            return res.status(403).send('Forbidden'); 
+        }
+        
+        const data = req.body;
+        console.log('Получено уведомление от CryptoCloud:', data);
+
         if (data.status === 'success') {
             const userId = data.payload.chatId;
 
+            
             const usersCollection = db.collection('users');
-            const user = await usersCollection.findOne({ chatId: userId });
+            const user = await usersCollection.findOne({ chatId: parseInt(userId) });
             let purchases = user ? user.purchases : 0;
             purchases++;
 
             await usersCollection.updateOne(
-                { chatId: userId },
+                { chatId: parseInt(userId) },
                 { $set: { purchases: purchases, lastPurchase: new Date() } },
                 { upsert: true }
             );
@@ -91,16 +120,14 @@ app.post('/webhook', async (req, res) => {
                 await bot.sendMessage(userId, `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
             }
             
-            await bot.sendMessage(adminChatId, `✅ **Новая оплата через CryptoCloud!**\nПользователь: ${data.payload.username}\nСумма: ${data.amount} ${data.currency}`, {
+            await bot.sendMessage(adminChatId, `✅ **Новая оплата через CryptoCloud!**\nПользователь: ${data.payload.username}\nСумма: ${data.amount} ${data.currency}\nТовар: ${data.payload.item}`, {
                 reply_markup: {
                     inline_keyboard: [
                         [{ text: '✅ Заказ выполнен', callback_data: `complete_order_${userId}` }]
                     ]
                 }
             });
-
         }
-
         res.sendStatus(200);
     } catch (e) {
         console.error('Webhook error:', e);
@@ -108,14 +135,7 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-app.post('/webhook_telegram', (req, res) => {
-    try {
-        bot.processUpdate(req.body);
-    } catch (e) {
-        console.error('processUpdate error:', e);
-    }
-    res.sendStatus(200);
-});
+
 
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
@@ -151,7 +171,6 @@ bot.on('message', async (msg) => {
             const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[orderData.index];
             const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
-
             
             waitingForAction[chatId].step = 'paymentChoice';
             waitingForAction[chatId].playerId = playerId;
@@ -170,7 +189,6 @@ bot.on('message', async (msg) => {
                     }
                 }
             );
-
         } else if (waitingForAction[chatId].step === 'transfer_confirm') {
             const orderData = waitingForAction[chatId];
             const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
