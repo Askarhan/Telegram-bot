@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: telegram-bot-shop
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TOKEN
+        sync: false  # Будет задано через веб-интерфейс
+      - key: MONGO_URI
+        sync: false
+      - key: CRYPTOCLOUD_API_KEY
+        sync: false
+      - key: CRYPTOCLOUD_SHOP_ID
+        sync: false
+      - key: WEBHOOK_URL
+        value: https://your-app-name.onrender.com
