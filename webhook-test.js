@@ -1,7 +1,7 @@
 // Скрипт для тестирования вебхуков
 const axios = require('axios');
 
-const WEBHOOK_URL = 'https://your-app.onrender.com'; // Замените на ваш URL
+const WEBHOOK_URL = 'https://telegram-bot-2hyc.onrender.com'; // Замените на ваш URL
 
 async function testWebhooks() {
     console.log('🧪 Тестируем вебхуки...');
