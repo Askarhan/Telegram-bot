@@ -216,22 +216,40 @@ bot.on('message', async (msg) => {
             waitingForAction[chatId].step = 'paymentChoice';
             waitingForAction[chatId].playerId = playerId;
             
+            // Создаем разные кнопки для разных регионов
+            let paymentButtons = [];
+            
+            if (orderData.region === 'KG') {
+                // Для Кыргызстана - местные платежные системы
+                paymentButtons = [
+                    [{ text: '💳 O! Деньги', callback_data: `pay_omoney_${orderData.index}` }],
+                    [{ text: '💰 Balance.kg', callback_data: `pay_balance_${orderData.index}` }],
+                    [{ text: '🏦 Банковский перевод', callback_data: `pay_transfer_${orderData.index}` }]
+                ];
+            } else {
+                // Для России - крипто и переводы
+                paymentButtons = [
+                    [{ text: '🏦 Оплата переводом', callback_data: `pay_transfer_${orderData.index}` }],
+                    [{ text: '₿ Оплата криптовалютой', callback_data: `pay_crypto_${orderData.index}` }]
+                ];
+            }
+            
             await bot.sendMessage(chatId, 
                 `Вы выбрали **${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}** ` +
-                `Стоимость: **${selectedItem.price}** ${currency} 💰\n` +
-                `Пожалуйста, оплатите данную покупку, выбрав удобный вам способ оплаты!`,
+                `Стоимость: **${selectedItem.price}** ${currency} 💰\n\n` +
+                `${orderData.region === 'KG' ? '🇰🇬 ' : '🇷🇺 '}Выберите удобный способ оплаты:`,
                 {
                     parse_mode: 'Markdown',
                     reply_markup: {
-                        inline_keyboard: [
-                            [{ text: 'Оплата переводом', callback_data: `pay_transfer_${orderData.index}` }],
-                            [{ text: 'Оплата криптовалютой', callback_data: `pay_crypto_${orderData.index}` }]
-                        ]
+                        inline_keyboard: paymentButtons
                     }
                 }
             );
 
-        } else if (waitingForAction[chatId].step === 'transfer_confirm') {
+        } else if (waitingForAction[chatId].step === 'transfer_confirm' || 
+                   waitingForAction[chatId].step === 'omoney_confirm' || 
+                   waitingForAction[chatId].step === 'balance_confirm') {
+            
             const orderData = waitingForAction[chatId];
             const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[orderData.index];
@@ -239,13 +257,23 @@ bot.on('message', async (msg) => {
             const userUsername = msg.from.username;
             const userFirstName = msg.from.first_name;
             
+            // Определяем тип оплаты для админа
+            let paymentType = 'Банковский перевод';
+            if (waitingForAction[chatId].step === 'omoney_confirm') {
+                paymentType = 'O! Деньги';
+            } else if (waitingForAction[chatId].step === 'balance_confirm') {
+                paymentType = 'Balance.kg';
+            }
+            
             const adminMessage = 
-                `📢 **НОВЫЙ ЗАКАЗ (Оплата переводом)**\n\n` +
+                `📢 **НОВЫЙ ЗАКАЗ (${paymentType})**\n\n` +
                 `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
                 `**Сумма:** ${selectedItem.price} ${currency}\n` +
+                `**Способ оплаты:** ${paymentType}\n` +
                 `**Пользователь:** ${userUsername ? `@${userUsername}` : userFirstName}\n` +
                 `**ID пользователя:** ${msg.from.id}\n` +
                 `**ID игрока MLBB:** ${orderData.playerId}\n` +
+                `**Регион:** ${orderData.region}\n` +
                 `**Ожидает подтверждения: скриншот был отправлен.**`;
 
             if (msg.photo) {
@@ -259,10 +287,21 @@ bot.on('message', async (msg) => {
                         ]
                     }
                 });
-                await bot.sendMessage(chatId, '✅ **Ваш скриншот отправлен на проверку.** Мы сообщим вам, как только оплата будет подтверждена!', { parse_mode: 'Markdown' });
+                
+                let confirmMessage = '✅ **Ваш скриншот отправлен на проверку.**\n\n';
+                if (paymentType === 'O! Деньги') {
+                    confirmMessage += '📱 Проверяем платеж через O! Деньги...';
+                } else if (paymentType === 'Balance.kg') {
+                    confirmMessage += '💰 Проверяем платеж через Balance.kg...';
+                } else {
+                    confirmMessage += '🏦 Проверяем банковский перевод...';
+                }
+                confirmMessage += '\n\nМы сообщим вам, как только оплата будет подтверждена! ⏱️';
+                
+                await bot.sendMessage(chatId, confirmMessage, { parse_mode: 'Markdown' });
                 delete waitingForAction[chatId];
             } else {
-                await bot.sendMessage(chatId, 'Пожалуйста, отправьте именно скриншот (изображение), а не другой тип файла.');
+                await bot.sendMessage(chatId, '📷 Пожалуйста, отправьте именно **скриншот** (изображение), а не другой тип файла.\n\nНам нужно увидеть подтверждение оплаты! 🧾', { parse_mode: 'Markdown' });
             }
         }
     }
@@ -325,45 +364,107 @@ bot.on('callback_query', async (q) => {
 
             await bot.sendMessage(chatId, paymentDetails, { parse_mode: 'Markdown' });
 
+        } else if (q.data.startsWith('pay_omoney_')) {
+            const [, , index] = q.data.split('_');
+            const orderData = waitingForAction[chatId];
+            const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
+            const selectedItem = diamondsData[index];
+            
+            waitingForAction[chatId].step = 'omoney_confirm';
+
+            const paymentDetails = 
+                `💳 **O! ДЕНЬГИ - КЫРГЫЗСТАН**\n\n` +
+                `**Сумма к оплате: ${selectedItem.price} KGS**\n\n` +
+                `📱 **Инструкция по оплате:**\n` +
+                `1. Откройте приложение O! или наберите *111#\n` +
+                `2. Выберите "Переводы" → "По номеру телефона"\n` +
+                `3. Введите номер: **+996 707 711 770**\n` +
+                `4. Сумма: **${selectedItem.price} сом**\n` +
+                `5. Получатель: **Аскар С.**\n\n` +
+                `💡 **Важно:** После оплаты обязательно отправьте скриншот чека в этот чат!\n\n` +
+                `🔔 Мы проверим платеж и пополним ваш аккаунт в течение 5-15 минут.`;
+
+            await bot.sendMessage(chatId, paymentDetails, { parse_mode: 'Markdown' });
+
+        } else if (q.data.startsWith('pay_balance_')) {
+            const [, , index] = q.data.split('_');
+            const orderData = waitingForAction[chatId];
+            const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
+            const selectedItem = diamondsData[index];
+            
+            waitingForAction[chatId].step = 'balance_confirm';
+
+            const paymentDetails = 
+                `💰 **BALANCE.KG - КЫРГЫЗСТАН**\n\n` +
+                `**Сумма к оплате: ${selectedItem.price} KGS**\n\n` +
+                `🌐 **Инструкция по оплате:**\n` +
+                `1. Перейдите на сайт: **balance.kg**\n` +
+                `2. Авторизуйтесь в личном кабинете\n` +
+                `3. Выберите "Переводы" → "На кошелек"\n` +
+                `4. Номер кошелька: **+996 707 711 770**\n` +
+                `5. Сумма: **${selectedItem.price} сом**\n` +
+                `6. Получатель: **Аскар С.**\n\n` +
+                `💡 **Важно:** После оплаты отправьте скриншот подтверждения в этот чат!\n\n` +
+                `📞 **Альтернатива:** Можете позвонить на короткий номер Balance.kg для перевода по телефону.`;
+
+            await bot.sendMessage(chatId, paymentDetails, { parse_mode: 'Markdown' });
+
         } else if (q.data.startsWith('pay_crypto_')) {
             const [, , index] = q.data.split('_');
             const orderData = waitingForAction[chatId];
             const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
             const selectedItem = diamondsData[index];
-            const currency = selectedRegion === 'RU' ? 'RUB' : 'KGS';
-
+            
+            // Исправляем валюты для CryptoCloud
+            const currency = selectedRegion === 'RU' ? 'RUB' : 'USD'; // KGS не поддерживается, используем USD
             const userFirstName = q.from.first_name;
             const userUsername = q.from.username;
 
+            console.log('🔄 Создание CryptoCloud платежа...');
+            console.log('Shop ID:', CRYPTOCLOUD_SHOP_ID);
+            console.log('Amount:', selectedItem.price);
+            console.log('Currency:', currency);
+
             try {
-                const response = await axios.post('https://api.cryptocloud.plus/v1/invoice/create', {
+                // Правильная структура запроса для CryptoCloud API v2
+                const requestData = {
                     shop_id: CRYPTOCLOUD_SHOP_ID,
-                    amount: selectedItem.price,
+                    amount: parseFloat(selectedItem.price), // Убеждаемся что это число
                     currency: currency,
-                    order_id: `order_${Date.now()}_${chatId}`,
-                    payload: {
+                    order_id: `diamond_${Date.now()}_${chatId}`, // Уникальный ID
+                    description: `${typeof selectedItem.amount === 'number' ? `${selectedItem.amount} алмазов` : selectedItem.amount} для MLBB`,
+                    payload: JSON.stringify({
                         chatId: chatId,
                         username: userUsername || userFirstName,
                         playerId: orderData.playerId,
-                        item: `${selectedItem.amount} ${currency}`
-                    },
-                    email: null
-                }, {
+                        region: orderData.region,
+                        itemIndex: index
+                    })
+                };
+
+                console.log('📦 Request data:', JSON.stringify(requestData, null, 2));
+
+                const response = await axios.post('https://api.cryptocloud.plus/v2/invoice/create', requestData, {
                     headers: {
                         'Authorization': `Token ${CRYPTOCLOUD_API_KEY}`,
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    timeout: 10000 // 10 секунд таймаут
                 });
 
-                const paymentLink = response.data.result.link;
+                console.log('✅ CryptoCloud response:', response.data);
+
+                if (response.data && response.data.result && response.data.result.link) {
+                    const paymentLink = response.data.result.link;
                 
                 const adminMessage =
-                    `📢 **НОВЫЙ ЗАКАЗ**\n\n` +
+                    `📢 **НОВЫЙ ЗАКАЗ (КРИПТО)**\n\n` +
                     `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
                     `**Сумма:** ${selectedItem.price} ${currency}\n` +
                     `**Пользователь:** ${userUsername ? `@${userUsername}` : userFirstName}\n` +
                     `**ID пользователя:** ${q.from.id}\n` +
-                    `**ID игрока MLBB:** ${orderData.playerId}`;
+                    `**ID игрока MLBB:** ${orderData.playerId}\n` +
+                    `**Регион:** ${orderData.region}`;
                 
                 await bot.sendMessage(adminChatId, adminMessage, {
                     parse_mode: 'Markdown',
@@ -376,14 +477,16 @@ bot.on('callback_query', async (q) => {
 
                 await bot.sendMessage(
                     chatId,
-                    `К оплате **${selectedItem.price} ${currency}**.\n\n` +
-                    `Оплата криптовалютой через CryptoCloud.`,
+                    `💳 **Оплата готова!**\n\n` +
+                    `**Товар:** ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n` +
+                    `**К оплате:** ${selectedItem.price} ${currency}\n\n` +
+                    `Нажмите кнопку ниже для оплаты криптовалютой:`,
                     {
                         parse_mode: 'Markdown',
                         reply_markup: {
                             inline_keyboard: [
-                                [{ text: 'Оплатить ✅', url: paymentLink }],
-                                [{ text: 'Назад', callback_data: 'back_to_regions' }]
+                                [{ text: '💳 Оплатить криптовалютой', url: paymentLink }],
+                                [{ text: '🔙 Назад', callback_data: 'back_to_regions' }]
                             ]
                         }
                     }
@@ -391,9 +494,39 @@ bot.on('callback_query', async (q) => {
 
                 delete waitingForAction[chatId]; // Очищаем состояние после создания платежа
 
+                } else {
+                    throw new Error('Неправильный ответ от CryptoCloud API');
+                }
+
             } catch (e) {
-                console.error('❌ CryptoCloud API error:', e.response ? e.response.data : e.message);
-                await bot.sendMessage(chatId, 'К сожалению, произошла ошибка при создании платежа. Попробуйте еще раз.');
+                console.error('❌ CryptoCloud API error details:');
+                console.error('Status:', e.response?.status);
+                console.error('Status Text:', e.response?.statusText);
+                console.error('Headers:', e.response?.headers);
+                console.error('Data:', e.response?.data);
+                console.error('Message:', e.message);
+                
+                let errorMessage = 'К сожалению, произошла ошибка при создании платежа.';
+                
+                if (e.response?.status === 401) {
+                    errorMessage = '❌ Ошибка авторизации CryptoCloud. Проверьте API ключ.';
+                    console.error('🔑 Проверьте CRYPTOCLOUD_API_KEY в переменных окружения');
+                } else if (e.response?.status === 400) {
+                    errorMessage = '❌ Неверные параметры платежа. Попробуйте другую валюту.';
+                    console.error('💰 Возможно проблема с валютой или суммой');
+                } else if (e.response?.data?.message) {
+                    errorMessage = `❌ ${e.response.data.message}`;
+                }
+                
+                await bot.sendMessage(chatId, `${errorMessage}\n\n💡 Попробуйте:\n• Выбрать другой регион\n• Использовать оплату переводом\n• Обратиться к администратору`, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '🔄 Попробовать снова', callback_data: `pay_crypto_${index}` }],
+                            [{ text: '💳 Оплата переводом', callback_data: `pay_transfer_${index}` }],
+                            [{ text: '🔙 Назад', callback_data: 'back_to_regions' }]
+                        ]
+                    }
+                });
             }
             
         } else if (q.data.startsWith('confirm_payment_')) {
@@ -466,17 +599,25 @@ process.on('SIGTERM', async () => {
 
 async function showMainMenu(chatId) {
     try {
-        await bot.sendMessage(chatId, 'Главное меню:', {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
-                        { text: 'Отзывы 💖', url: 'https://t.me/annurreviews' }
-                    ],
-                    [{ text: 'Оставить отзыв 💌', url: 'https://t.me/annurreviews' }]
-                ]
-            }
-        });
+        await bot.sendMessage(chatId, 
+            '💎 **ANNUR DIAMONDS** 💎\n\n' +
+            '🎮 Пополнение алмазов для Mobile Legends: Bang Bang\n\n' +
+            '💳 **Способы оплаты:**\n' +
+            '🇷🇺 **Россия:** банковские переводы, криптовалюта\n' +
+            '🇰🇬 **Кыргызстан:** O! Деньги, Balance.kg\n\n' +
+            '⚡ Быстрое пополнение за 5-15 минут!', 
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '💎 Купить алмазы', callback_data: 'buy_diamonds' },
+                            { text: '💖 Отзывы', url: 'https://t.me/annurreviews' }
+                        ],
+                        [{ text: '💌 Оставить отзыв', url: 'https://t.me/annurreviews' }]
+                    ]
+                }
+            });
     } catch (error) {
         console.error('❌ Error showing main menu:', error);
     }
@@ -484,19 +625,24 @@ async function showMainMenu(chatId) {
 
 async function editToRegionMenu(chatId, messageId) {
     try {
-        await bot.editMessageText('Выберите регион:', {
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: '🇷🇺 RU', callback_data: 'region_ru' },
-                        { text: '🇰🇬 KG', callback_data: 'region_kg' }
+        await bot.editMessageText(
+            '🌍 **Выберите ваш регион для оплаты:**\n\n' +
+            '🇷🇺 **Россия** - банковские переводы, криптовалюта\n' +
+            '🇰🇬 **Кыргызстан** - O! Деньги, Balance.kg, банк. переводы', 
+            {
+                chat_id: chatId,
+                message_id: messageId,
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '🇷🇺 Россия (RU)', callback_data: 'region_ru' },
+                            { text: '🇰🇬 Кыргызстан (KG)', callback_data: 'region_kg' }
+                        ],
+                        [{ text: '🔙 Назад', callback_data: 'back_to_start' }]
                     ],
-                    [{ text: 'Назад 🔙', callback_data: 'back_to_start' }]
-                ],
-            },
-        });
+                },
+            });
     } catch (error) {
         console.error('❌ Error editing to region menu:', error);
     }
