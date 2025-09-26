@@ -1,4 +1,4 @@
-Const express = require('express');
+const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const { MongoClient } = require('mongodb');
 const axios = require('axios');
@@ -6,13 +6,19 @@ const axios = require('axios');
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT;
-const TOKEN = process.env.TOKEN || '8370855958:AAHC8ry_PsUqso_jC2sAS9CnQnfURk1UW3w';
+// ИСПОЛЬЗУЕМ ТОЛЬКО ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
+const PORT = process.env.PORT || 3000;
+const TOKEN = process.env.TOKEN; // Убрали токен из кода!
 const MONGO_URI = process.env.MONGO_URI;
+const CRYPTOCLOUD_API_KEY = process.env.CRYPTOCLOUD_API_KEY;
+const CRYPTOCLOUD_SHOP_ID = process.env.CRYPTOCLOUD_SHOP_ID;
+const WEBHOOK_URL = process.env.WEBHOOK_URL; // https://your-app.onrender.com
 
-
-const CRYPTOCLOUD_API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1dWlkIjoiTmprMk5URT0iLCJ0eXBlIjoicHJvamVjdCIsInYiOiI4YTFlZTY2NzU3YmZiNGJmMzk2NWZiOTQyM2ZjZTI2N2I3MTllMjEyNWZkMmJjNWMzNWExMTNkMTcyZThlMWU5IiwiZXhwIjo4ODE1NjkyODU5NX0.tupMgUWPHW4a1mvdb0oarSMln4P7AFRGxbBJtorHaxw';
-const CRYPTOCLOUD_SHOP_ID = '6Pi76JVyHST5yALH';
+// Проверка обязательных переменных
+if (!TOKEN || !MONGO_URI || !CRYPTOCLOUD_API_KEY) {
+    console.error('❌ Отсутствуют обязательные переменные окружения!');
+    process.exit(1);
+}
 
 const bot = new TelegramBot(TOKEN);
 const client = new MongoClient(MONGO_URI);
@@ -27,13 +33,32 @@ async function connectToDb() {
     try {
         await client.connect();
         db = client.db('bot_db');
-        console.log("Connected to MongoDB");
+        console.log("✅ Connected to MongoDB");
     } catch (e) {
-        console.error("Failed to connect to MongoDB", e);
+        console.error("❌ Failed to connect to MongoDB", e);
     }
 }
 
-connectToDb();
+// ВАЖНО: Функция установки webhook
+async function setWebhook() {
+    try {
+        const webhookUrl = `${WEBHOOK_URL}/webhook_telegram`;
+        await bot.setWebHook(webhookUrl);
+        console.log(`✅ Webhook установлен: ${webhookUrl}`);
+    } catch (error) {
+        console.error('❌ Ошибка установки webhook:', error);
+    }
+}
+
+// Инициализация при запуске
+async function initialize() {
+    await connectToDb();
+    if (WEBHOOK_URL) {
+        await setWebhook();
+    }
+}
+
+initialize();
 
 const diamondsDataRU = [
     { amount: 'Недельный алмазный пропуск', price: 217 },
@@ -63,13 +88,25 @@ const diamondsDataKG = [
     { amount: 9288, price: 10700 }
 ];
 
+// Health check endpoint
 app.get('/', (req, res) => {
-    res.send('Сервер работает!');
+    res.json({ 
+        status: 'OK', 
+        message: 'Telegram Bot Server',
+        timestamp: new Date().toISOString()
+    });
 });
 
+// Health check для UptimeRobot
+app.get('/health', (req, res) => {
+    res.json({ status: 'healthy', uptime: process.uptime() });
+});
+
+// Webhook для CryptoCloud платежей
 app.post('/webhook', async (req, res) => {
     try {
         const data = req.body;
+        console.log('📦 CryptoCloud webhook data:', data);
         
         if (data.status === 'success') {
             const userId = data.payload.chatId;
@@ -98,27 +135,40 @@ app.post('/webhook', async (req, res) => {
                     ]
                 }
             });
-
         }
 
         res.sendStatus(200);
     } catch (e) {
-        console.error('Webhook error:', e);
+        console.error('❌ Webhook error:', e);
         res.sendStatus(500);
     }
 });
 
+// Webhook для Telegram
 app.post('/webhook_telegram', (req, res) => {
     try {
+        console.log('📨 Telegram update received');
         bot.processUpdate(req.body);
+        res.sendStatus(200);
     } catch (e) {
-        console.error('processUpdate error:', e);
+        console.error('❌ processUpdate error:', e);
+        res.sendStatus(500);
     }
-    res.sendStatus(200);
+});
+
+// Endpoint для установки webhook (одноразово)
+app.get('/set-webhook', async (req, res) => {
+    try {
+        await setWebhook();
+        res.json({ success: true, message: 'Webhook установлен' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 bot.onText(/\/start/, (msg) => {
     const chatId = msg.chat.id;
+    console.log(`👤 Пользователь ${chatId} запустил бота`);
     showMainMenu(chatId);
 });
 
@@ -128,15 +178,20 @@ bot.onText(/\/mybonus/, async (msg) => {
         await bot.sendMessage(chatId, 'Ошибка: база данных не подключена.');
         return;
     }
-    const usersCollection = db.collection('users');
-    const user = await usersCollection.findOne({ chatId: chatId });
-    const purchases = user ? user.purchases : 0;
-    const untilBonus = 5 - (purchases % 5);
+    try {
+        const usersCollection = db.collection('users');
+        const user = await usersCollection.findOne({ chatId: chatId });
+        const purchases = user ? user.purchases : 0;
+        const untilBonus = 5 - (purchases % 5);
 
-    if (purchases === 0) {
-        await bot.sendMessage(chatId, `У вас пока нет покупок. Совершите 5 покупок, чтобы получить бонус!`);
-    } else {
-        await bot.sendMessage(chatId, `Вы совершили ${purchases} покупок. Осталось ${untilBonus} до получения бонуса!`);
+        if (purchases === 0) {
+            await bot.sendMessage(chatId, `У вас пока нет покупок. Совершите 5 покупок, чтобы получить бонус!`);
+        } else {
+            await bot.sendMessage(chatId, `Вы совершили ${purchases} покупок. Осталось ${untilBonus} до получения бонуса!`);
+        }
+    } catch (error) {
+        console.error('❌ Database error:', error);
+        await bot.sendMessage(chatId, 'Произошла ошибка при получении данных.');
     }
 });
 
@@ -152,7 +207,6 @@ bot.on('message', async (msg) => {
             const selectedItem = diamondsData[orderData.index];
             const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
 
-            
             waitingForAction[chatId].step = 'paymentChoice';
             waitingForAction[chatId].playerId = playerId;
             
@@ -222,10 +276,8 @@ bot.on('callback_query', async (q) => {
             selectedRegion = 'KG';
             await editToDiamondsMenu(chatId, messageId);
         } else if (q.data === 'reviews') {
-        
             await bot.sendMessage(chatId, 'Отзывы наших клиентов: https://t.me/annurreviews');
         } else if (q.data === 'leave_review') {
-            
             await bot.sendMessage(chatId, 'Оставить отзыв вы можете в нашем канале: https://t.me/annurreviews');
         } else if (q.data === 'back_to_start') {
             await editToMainMenu(chatId, messageId);
@@ -330,49 +382,53 @@ bot.on('callback_query', async (q) => {
                         }
                     }
                 );
+
+                delete waitingForAction[chatId]; // Очищаем состояние после создания платежа
+
             } catch (e) {
-                console.error('CryptoCloud API error:', e.response ? e.response.data : e.message);
-                if (e.response) {
-                    console.log('CryptoCloud detailed error:', e.response.data);
-                }
+                console.error('❌ CryptoCloud API error:', e.response ? e.response.data : e.message);
                 await bot.sendMessage(chatId, 'К сожалению, произошла ошибка при создании платежа. Попробуйте еще раз.');
             }
             
         } else if (q.data.startsWith('confirm_payment_')) {
-            const userIdToConfirm = q.data.split('_')[2];
+            const userIdToConfirm = parseInt(q.data.split('_')[2]);
             await bot.sendMessage(userIdToConfirm, `✅ **Ваша оплата подтверждена!** Мы пополним ваш аккаунт в ближайшее время. Спасибо за покупку!`, { parse_mode: 'Markdown' });
             await bot.sendMessage(chatId, 'Подтверждение отправлено пользователю.');
 
-            const usersCollection = db.collection('users');
-            const user = await usersCollection.findOne({ chatId: parseInt(userIdToConfirm) });
-            let purchases = user ? user.purchases : 0;
-            purchases++;
+            try {
+                const usersCollection = db.collection('users');
+                const user = await usersCollection.findOne({ chatId: userIdToConfirm });
+                let purchases = user ? user.purchases : 0;
+                purchases++;
 
-            await usersCollection.updateOne(
-                { chatId: parseInt(userIdToConfirm) },
-                { $set: { purchases: purchases, lastPurchase: new Date() } },
-                { upsert: true }
-            );
+                await usersCollection.updateOne(
+                    { chatId: userIdToConfirm },
+                    { $set: { purchases: purchases, lastPurchase: new Date() } },
+                    { upsert: true }
+                );
 
-            if (purchases % 5 === 0) {
-                await bot.sendMessage(parseInt(userIdToConfirm), `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
+                if (purchases % 5 === 0) {
+                    await bot.sendMessage(userIdToConfirm, `🎉 **Поздравляем!** 🎉 Вы совершили ${purchases} покупок и получаете бонус — **50 бонусных алмазов!**`, { parse_mode: 'Markdown' });
+                }
+
+                await bot.sendMessage(chatId, 'Оплата подтверждена. Теперь вы можете пополнить счет клиента и нажать "Заказ выполнен".', {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: '✅ Заказ выполнен', callback_data: `complete_order_${userIdToConfirm}` }]
+                        ]
+                    }
+                });
+            } catch (error) {
+                console.error('❌ Database error:', error);
             }
 
-        
-            await bot.sendMessage(chatId, 'Оплата подтверждена. Теперь вы можете пополнить счет клиента и нажать "Заказ выполнен".', {
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: '✅ Заказ выполнен', callback_data: `complete_order_${userIdToConfirm}` }]
-                    ]
-                }
-            });
-
         } else if (q.data.startsWith('decline_payment_')) {
-            const userIdToDecline = q.data.split('_')[2];
+            const userIdToDecline = parseInt(q.data.split('_')[2]);
             await bot.sendMessage(userIdToDecline, '❌ **Ваша оплата отклонена.** Пожалуйста, проверьте правильность платежа и повторите попытку.', { parse_mode: 'Markdown' });
             await bot.sendMessage(chatId, 'Отказ отправлен пользователю.');
+            
         } else if (q.data.startsWith('complete_order_')) {
-            const userIdToComplete = q.data.split('_')[2];
+            const userIdToComplete = parseInt(q.data.split('_')[2]);
             await bot.sendMessage(userIdToComplete, `🎉 **Ваш заказ выполнен!** 🎉\n\nПожалуйста, проверьте баланс своего аккаунта в игре. Если вам все понравилось, будем рады вашему отзыву.`, {
                 parse_mode: 'Markdown',
                 reply_markup: {
@@ -386,87 +442,114 @@ bot.on('callback_query', async (q) => {
 
         await bot.answerCallbackQuery(q.id);
     } catch (e) {
-        console.error('callback error:', e);
+        console.error('❌ Callback error:', e);
+        try {
+            await bot.answerCallbackQuery(q.id, { text: 'Произошла ошибка. Попробуйте еще раз.' });
+        } catch (answerError) {
+            console.error('❌ Error answering callback:', answerError);
+        }
     }
 });
 
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+    console.log('🔄 Получен сигнал SIGTERM. Завершение работы...');
+    await client.close();
+    process.exit(0);
+});
+
 async function showMainMenu(chatId) {
-    await bot.sendMessage(chatId, 'Главное меню:', {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
-                    
-                    { text: 'Отзывы 💖', url: 'https://t.me/annurreviews' }
-                ],
-                
-                [{ text: 'Оставить отзыв 💌', url: 'https://t.me/annurreviews' }]
-            ]
-        }
-    });
+    try {
+        await bot.sendMessage(chatId, 'Главное меню:', {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
+                        { text: 'Отзывы 💖', url: 'https://t.me/annurreviews' }
+                    ],
+                    [{ text: 'Оставить отзыв 💌', url: 'https://t.me/annurreviews' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error showing main menu:', error);
+    }
 }
 
 async function editToRegionMenu(chatId, messageId) {
-    await bot.editMessageText('Выберите регион:', {
-        chat_id: chatId,
-        message_id: messageId,
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: '🇷🇺 RU', callback_data: 'region_ru' },
-                    { text: '🇰🇬 KG', callback_data: 'region_kg' }
+    try {
+        await bot.editMessageText('Выберите регион:', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '🇷🇺 RU', callback_data: 'region_ru' },
+                        { text: '🇰🇬 KG', callback_data: 'region_kg' }
+                    ],
+                    [{ text: 'Назад 🔙', callback_data: 'back_to_start' }]
                 ],
-                [{ text: 'Назад 🔙', callback_data: 'back_to_start' }]
-            ],
-        },
-    });
+            },
+        });
+    } catch (error) {
+        console.error('❌ Error editing to region menu:', error);
+    }
 }
 
 async function editToDiamondsMenu(chatId, messageId) {
-    const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
-    const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
-    const keyboard = [];
-    let currentRow = [];
+    try {
+        const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
+        const diamondsData = selectedRegion === 'RU' ? diamondsDataRU : diamondsDataKG;
+        const keyboard = [];
+        let currentRow = [];
 
-    diamondsData.forEach((d, index) => {
-        const amountText = typeof d.amount === 'number' ? `${d.amount}💎` : d.amount;
-        
-        currentRow.push({
-            text: `${amountText} — ${d.price.toLocaleString('ru-RU')} ${currency}`,
-            callback_data: `diamond_${index}`
+        diamondsData.forEach((d, index) => {
+            const amountText = typeof d.amount === 'number' ? `${d.amount}💎` : d.amount;
+            
+            currentRow.push({
+                text: `${amountText} — ${d.price.toLocaleString('ru-RU')} ${currency}`,
+                callback_data: `diamond_${index}`
+            });
+
+            if (currentRow.length === 2 || index === diamondsData.length - 1) {
+                keyboard.push(currentRow);
+                currentRow = [];
+            }
         });
 
-        if (currentRow.length === 2 || index === diamondsData.length - 1) {
-            keyboard.push(currentRow);
-            currentRow = [];
-        }
-    });
+        keyboard.push([{ text: 'Назад 🔙', callback_data: 'back_to_regions' }]);
 
-    keyboard.push([{ text: 'Назад 🔙', callback_data: 'back_to_regions' }]);
-
-    await bot.editMessageText(`Выберите пакет алмазов (сейчас выбран регион: ${selectedRegion}):`, {
-        chat_id: chatId,
-        message_id: messageId,
-        reply_markup: { inline_keyboard: keyboard },
-    });
+        await bot.editMessageText(`Выберите пакет алмазов (сейчас выбран регион: ${selectedRegion}):`, {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: { inline_keyboard: keyboard },
+        });
+    } catch (error) {
+        console.error('❌ Error editing to diamonds menu:', error);
+    }
 }
 
 async function editToMainMenu(chatId, messageId) {
-    await bot.editMessageText('Главное меню:', {
-        chat_id: chatId,
-        message_id: messageId,
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
-                    { text: 'Отзывы 💖', url: 'https://t.me/annurreviews' }
-                ],
-                [{ text: 'Оставить отзыв 💌', url: 'https://t.me/annurreviews' }]
-            ]
-        }
-    });
+    try {
+        await bot.editMessageText('Главное меню:', {
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: 'Купить алмазы 💎', callback_data: 'buy_diamonds' },
+                        { text: 'Отзывы 💖', url: 'https://t.me/annurreviews' }
+                    ],
+                    [{ text: 'Оставить отзыв 💌', url: 'https://t.me/annurreviews' }]
+                ]
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error editing to main menu:', error);
+    }
 }
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📍 Webhook URL: ${WEBHOOK_URL}`);
 });
