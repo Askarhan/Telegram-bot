@@ -1,3 +1,9 @@
+console.log('🔍 Checking environment variables:');
+console.log('TOKEN exists:', !!process.env.TOKEN);
+console.log('MONGO_URI exists:', !!process.env.MONGO_URI);
+console.log('CRYPTOCLOUD_API_KEY exists:', !!process.env.CRYPTOCLOUD_API_KEY);
+console.log('WEBHOOK_URL:', process.env.WEBHOOK_URL);
+
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const { MongoClient } = require('mongodb');
