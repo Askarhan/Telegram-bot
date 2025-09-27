@@ -1,30 +1,25 @@
 {
   "name": "telegram-bot-shop",
-  "version": "1.0.0",
-  "description": "Telegram bot for diamond shop",
+  "version": "1.1.0",
+  "description": "Secure Telegram bot for diamond shop",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon index.js"
   },
   "keywords": [
     "telegram",
     "bot",
     "shop",
-    "diamonds",
-    "cryptocloud"
+    "diamonds"
   ],
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
-    "node-telegram-bot-api": "^0.64.0",
-    "mongodb": "^6.1.0",
-    "axios": "^1.5.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
+    "express": "^4.19.2",
+    "node-telegram-bot-api": "^0.66.0", 
+    "mongodb": "^6.8.0",
+    "axios": "^1.7.4"
   },
   "engines": {
     "node": ">=18.0.0"
