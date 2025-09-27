@@ -617,19 +617,21 @@ bot.on('callback_query', async (q) => {
                     throw new Error('Неправильный ответ от CryptoCloud API');
                 }
 
-            } catch (e) {
-                console.error('❌ CryptoCloud API error details:');
-                console.error('Status:', e.response?.status);
-                console.error('Status Text:', e.response?.statusText);
-                console.error('Headers:', e.response?.headers);
-                console.error('Data:', e.response?.data);
-                console.error('Message:', e.message);
-                
-                let errorMessage = 'К сожалению, произошла ошибка при создании платежа.';
-                
-                if (e.response?.status === 401) {
-                    errorMessage = '❌ Ошибка авторизации CryptoCloud. Проверьте API ключ.';
-                    console.error('🔑 Проверьте CRYPTOCLOUD_API_KEY в переменных окружения');
-                } else if (e.response?.status === 400) {
-                    errorMessage = '❌ Неверные параметры платежа. Попробуйте другую валюту.';
-                    console.error('💰 Возможно проблема с валютой или суммой');
+          } catch (e) {
+                console.error('❌ Ошибка при создании платежа в CryptoCloud:', e.response ? e.response.data : e.message);
+
+                // Уведомляем пользователя
+                await bot.sendMessage(
+                    chatId,
+                    '❌ Произошла ошибка при создании платежа. Пожалуйста, попробуйте позже или выберите другой способ оплаты.',
+                    { parse_mode: 'Markdown' }
+                );
+
+                // Уведомляем админа
+                await bot.sendMessage(
+                    adminChatId,
+                    `❌ Ошибка при создании платежа в CryptoCloud для пользователя ${q.from.id}\nОшибка: ${e.message}`
+                );
+
+                delete waitingForAction[chatId]; // очищаем состояние, чтобы не застрял
+            }
