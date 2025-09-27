@@ -45,22 +45,22 @@ const diamondsDataRU = [
     { amount: 706, price: 1224 },
     { amount: 2195, price: 3106 },
     { amount: 3688, price: 5150 },
-    { amount: 5532, price: 7470 },
+    { amount: 5532, price: 7708 },
     { amount: 9288, price: 12980 }
 ];
 
 const diamondsDataKG = [
-    { amount: 'Алмазный пропуск (w)', price: 181 },
-    { amount: 'Сумеречный пропуск', price: 715 },
-    { amount: 56, price: 104 },
-    { amount: 86, price: 127 },
-    { amount: 172, price: 234 },
-    { amount: 257, price: 343 },
-    { amount: 706, price: 874 },
-    { amount: 2195, price: 2588 },
-    { amount: 3688, price: 4292 },
-    { amount: 5532, price: 6342 },
-    { amount: 9288, price: 10700 }
+    { amount: 'Алмазный пропуск (w)', price: 190 },
+    { amount: 'Сумеречный пропуск', price: 750 },
+    { amount: 56, price: 108 },
+    { amount: 86, price: 142 },
+    { amount: 172, price: 264 },
+    { amount: 257, price: 384 },
+    { amount: 706, price: 996 },
+    { amount: 2195, price: 2948 },
+    { amount: 3688, price: 4900 },
+    { amount: 5532, price: 7340 },
+    { amount: 9288, price: 12222 }
 ];
 
 // Подключение к базе данных
