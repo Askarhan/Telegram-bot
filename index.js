@@ -208,8 +208,19 @@ async function showMainMenu(chatId, messageId = null) {
                 ...options
             });
         } catch (error) {
-            await deleteMessage(chatId, messageId);
-            await bot.sendMessage(chatId, menuText, options);
+            // Если редактирование не удалось, попробуем только изменить клавиатуру
+            try {
+                await bot.editMessageReplyMarkup({ inline_keyboard: keyboard }, {
+                    chat_id: chatId,
+                    message_id: messageId
+                });
+            } catch (secondError) {
+                // Только в крайнем случае удаляем и создаем новое сообщение
+                setTimeout(async () => {
+                    await deleteMessage(chatId, messageId);
+                    await bot.sendMessage(chatId, menuText, options);
+                }, 100);
+            }
         }
     } else {
         await bot.sendMessage(chatId, menuText, options);
@@ -244,8 +255,17 @@ async function showRegionMenu(chatId, messageId = null) {
                 ...options
             });
         } catch (error) {
-            await deleteMessage(chatId, messageId);
-            await bot.sendMessage(chatId, regionText, options);
+            try {
+                await bot.editMessageReplyMarkup({ inline_keyboard: keyboard }, {
+                    chat_id: chatId,
+                    message_id: messageId
+                });
+            } catch (secondError) {
+                setTimeout(async () => {
+                    await deleteMessage(chatId, messageId);
+                    await bot.sendMessage(chatId, regionText, options);
+                }, 100);
+            }
         }
     } else {
         await bot.sendMessage(chatId, regionText, options);
@@ -293,8 +313,17 @@ async function showDiamondsMenu(chatId, messageId = null) {
                 ...options
             });
         } catch (error) {
-            await deleteMessage(chatId, messageId);
-            await bot.sendMessage(chatId, menuText, options);
+            try {
+                await bot.editMessageReplyMarkup({ inline_keyboard: keyboard }, {
+                    chat_id: chatId,
+                    message_id: messageId
+                });
+            } catch (secondError) {
+                setTimeout(async () => {
+                    await deleteMessage(chatId, messageId);
+                    await bot.sendMessage(chatId, menuText, options);
+                }, 100);
+            }
         }
     } else {
         await bot.sendMessage(chatId, menuText, options);
@@ -434,26 +463,32 @@ async function showTransferInstructions(chatId, messageId, orderData, index) {
         `🏛️ *Компаньон:* +996707711770\n\n` +
         `📸 После оплаты отправьте скриншот чека`;
 
+    const keyboard = [
+        [{ text: '🔙 К способам оплаты', callback_data: 'back_to_payment' }]
+    ];
+
     try {
         await bot.editMessageText(paymentDetails, {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 К способам оплаты', callback_data: 'back_to_payment' }]
-                ]
-            }
+            reply_markup: { inline_keyboard: keyboard }
         });
     } catch (error) {
-        await bot.sendMessage(chatId, paymentDetails, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 К способам оплаты', callback_data: 'back_to_payment' }]
-                ]
-            }
-        });
+        try {
+            await bot.editMessageReplyMarkup({ inline_keyboard: keyboard }, {
+                chat_id: chatId,
+                message_id: messageId
+            });
+        } catch (secondError) {
+            setTimeout(async () => {
+                await deleteMessage(chatId, messageId);
+                await bot.sendMessage(chatId, paymentDetails, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: keyboard }
+                });
+            }, 100);
+        }
     }
 }
 
@@ -476,26 +511,32 @@ async function showOMoneyInstructions(chatId, messageId, orderData, index) {
         `📸 Отправьте скриншот после оплаты\n` +
         `⚡ Обработка 5-15 минут`;
 
+    const keyboard = [
+        [{ text: '🔙 К способам оплаты', callback_data: 'back_to_payment' }]
+    ];
+
     try {
         await bot.editMessageText(paymentDetails, {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 К способам оплаты', callback_data: 'back_to_payment' }]
-                ]
-            }
+            reply_markup: { inline_keyboard: keyboard }
         });
     } catch (error) {
-        await bot.sendMessage(chatId, paymentDetails, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 К способам оплаты', callback_data: 'back_to_payment' }]
-                ]
-            }
-        });
+        try {
+            await bot.editMessageReplyMarkup({ inline_keyboard: keyboard }, {
+                chat_id: chatId,
+                message_id: messageId
+            });
+        } catch (secondError) {
+            setTimeout(async () => {
+                await deleteMessage(chatId, messageId);
+                await bot.sendMessage(chatId, paymentDetails, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: keyboard }
+                });
+            }, 100);
+        }
     }
 }
 
@@ -518,26 +559,32 @@ async function showBalanceInstructions(chatId, messageId, orderData, index) {
         `📞 *Альтернатива:* Звонок в Balance.kg\n` +
         `📸 Отправьте скриншот подтверждения`;
 
+    const keyboard = [
+        [{ text: '🔙 К способам оплаты', callback_data: 'back_to_payment' }]
+    ];
+
     try {
         await bot.editMessageText(paymentDetails, {
             chat_id: chatId,
             message_id: messageId,
             parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 К способам оплаты', callback_data: 'back_to_payment' }]
-                ]
-            }
+            reply_markup: { inline_keyboard: keyboard }
         });
     } catch (error) {
-        await bot.sendMessage(chatId, paymentDetails, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '🔙 К способам оплаты', callback_data: 'back_to_payment' }]
-                ]
-            }
-        });
+        try {
+            await bot.editMessageReplyMarkup({ inline_keyboard: keyboard }, {
+                chat_id: chatId,
+                message_id: messageId
+            });
+        } catch (secondError) {
+            setTimeout(async () => {
+                await deleteMessage(chatId, messageId);
+                await bot.sendMessage(chatId, paymentDetails, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: keyboard }
+                });
+            }, 100);
+        }
     }
 }
 
