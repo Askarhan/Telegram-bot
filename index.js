@@ -802,7 +802,7 @@ bot.on('callback_query', async (q) => {
             await bot.sendMessage(chatId, '💖 Отзывы наших клиентов: https://t.me/annurreviews');
             
         } else if (q.data === 'support') {
-            await bot.sendMessage(chatId, '📞 *Поддержка*\n\nПо всем вопросам обращайтесь к администратору: @admin_username', { parse_mode: 'Markdown' });
+            await bot.sendMessage(chatId, '📞 *Поддержка*\n\nПо всем вопросам обращайтесь к администратору: @annur_admin', { parse_mode: 'Markdown' });
             
         } else if (q.data === 'back_to_start') {
             await showMainMenu(chatId, messageId);
