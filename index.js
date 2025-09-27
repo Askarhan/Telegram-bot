@@ -5,7 +5,13 @@ console.log('CRYPTOCLOUD_API_KEY exists:', !!process.env.CRYPTOCLOUD_API_KEY);
 console.log('WEBHOOK_URL:', process.env.WEBHOOK_URL);
 
 // Улучшенная и сбалансированная система лояльности
-
+app.use(express.json({ limit: '10mb' }));
+app.use((req, res, next) => {
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.removeHeader('X-Powered-By');
+    next();
+});
 // Система уровней лояльности с разумными бонусами
 function getLoyaltyInfo(purchases) {
     let level, emoji, benefits, nextLevel, discount, bonusFrequency;
