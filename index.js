@@ -551,10 +551,15 @@ async function deleteMessage(chatId, messageId) {
 }
 
 // Команды бота
-bot.onText(/\/start/, (msg) => {
+bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
     console.log(`👤 Пользователь ${chatId} запустил бота`);
-    showMainMenu(chatId);
+    try {
+        await showMainMenu(chatId);
+    } catch (error) {
+        console.error('❌ Error showing main menu:', error);
+        await bot.sendMessage(chatId, 'Произошла ошибка при запуске бота. Попробуйте еще раз.');
+    }
 });
 
 bot.onText(/\/history/, async (msg) => {
