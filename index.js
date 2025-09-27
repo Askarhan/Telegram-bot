@@ -2,15 +2,34 @@
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const { MongoClient } = require('mongodb');
+const axios = require('axios');
 
 // Создаем Express приложение
 const app = express();
 
-// Создаем экземпляр бота
-const bot = new TelegramBot(process.env.TOKEN, { polling: true });
-
-// Переменные для базы данных
+// Переменные для базы данных и бота
 let db;
+let bot;
+
+// Глобальные переменные
+const waitingForAction = {};
+
+// Данные о алмазах (добавьте ваши реальные данные)
+const diamondsDataRU = [
+    { amount: 86, price: 65 },
+    { amount: 172, price: 129 },
+    { amount: 257, price: 194 },
+    { amount: 344, price: 259 },
+    { amount: 429, price: 323 }
+];
+
+const diamondsDataKG = [
+    { amount: 86, price: 79 },
+    { amount: 172, price: 159 },
+    { amount: 257, price: 239 },
+    { amount: 344, price: 319 },
+    { amount: 429, price: 399 }
+];
 
 console.log('🔍 Checking environment variables:');
 console.log('TOKEN exists:', !!process.env.TOKEN);
@@ -18,7 +37,23 @@ console.log('MONGO_URI exists:', !!process.env.MONGO_URI);
 console.log('CRYPTOCLOUD_API_KEY exists:', !!process.env.CRYPTOCLOUD_API_KEY);
 console.log('WEBHOOK_URL:', process.env.WEBHOOK_URL);
 
-// Теперь можно использовать app
+// Настройка Express для Render
+const PORT = process.env.PORT || 3000;
+
+// Обязательные роуты для Render
+app.get('/', (req, res) => {
+    res.json({ 
+        status: 'Bot is running',
+        timestamp: new Date().toISOString(),
+        message: 'Telegram bot server is active'
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'OK', uptime: process.uptime() });
+});
+
+// Middleware
 app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
     res.setHeader('X-Frame-Options', 'DENY');
@@ -27,7 +62,30 @@ app.use((req, res, next) => {
     next();
 });
 
-// Остальной ваш 
+// Инициализация бота и базы данных
+async function initializeBot() {
+    try {
+        // Подключение к базе данных
+        if (process.env.MONGO_URI) {
+            const client = new MongoClient(process.env.MONGO_URI);
+            await client.connect();
+            db = client.db();
+            console.log('✅ Connected to MongoDB');
+        }
+
+        // Создание бота
+        if (process.env.TOKEN) {
+            bot = new TelegramBot(process.env.TOKEN, { polling: true });
+            console.log('✅ Bot initialized');
+            
+            // Настройка обработчиков
+            setupBotHandlers();
+        }
+        
+    } catch (error) {
+        console.error('❌ Initialization error:', error);
+    }
+}
 
 // Система уровней лояльности с разумными бонусами
 function getLoyaltyInfo(purchases) {
@@ -36,8 +94,8 @@ function getLoyaltyInfo(purchases) {
     if (purchases >= 50) {
         level = 'Легенда';
         emoji = '👑';
-        discount = 0; // Легенды получают другие бонусы вместо постоянной скидки
-        bonusFrequency = 4; // бонус каждые 4 покупки (как у обычных)
+        discount = 0;
+        bonusFrequency = 4;
         benefits = [
             '🎁 Бонус каждые 4 покупки',
             '🎟️ 3 использования скидки 10%',
@@ -50,7 +108,7 @@ function getLoyaltyInfo(purchases) {
     } else if (purchases >= 20) {
         level = 'VIP клиент';
         emoji = '💎';
-        discount = 0; // VIP получают лимитированные скидки
+        discount = 0;
         bonusFrequency = 4;
         benefits = [
             '🎁 Бонус каждые 4 покупки',
@@ -62,7 +120,7 @@ function getLoyaltyInfo(purchases) {
     } else if (purchases >= 10) {
         level = 'Постоянный клиент';
         emoji = '⭐';
-        discount = 0; // Постоянные клиенты - лимитированные скидки
+        discount = 0;
         bonusFrequency = 5;
         benefits = [
             '🎁 Стандартные бонусы (каждые 5 покупок)',
@@ -110,17 +168,17 @@ function getLoyaltyInfo(purchases) {
 // Система лимитированных скидок
 async function getUserDiscountInfo(chatId) {
     try {
+        if (!db) return { active_3: 0, active_5: 0, vip_7: 0, legend_10: 0 };
+        
         const usersCollection = db.collection('users');
         const user = await usersCollection.findOne({ chatId: chatId });
-        const purchases = user ? user.purchases : 0;
         
-        // Инициализируем данные о скидках если их нет
         if (!user || !user.discountUsage) {
             const discountUsage = {
-                active_3: 0,    // скидка 3% использована раз
-                active_5: 0,    // скидка 5% использована раз  
-                vip_7: 0,       // скидка 7% использована раз
-                legend_10: 0    // скидка 10% использована раз
+                active_3: 0,
+                active_5: 0,
+                vip_7: 0,
+                legend_10: 0
             };
             
             if (user) {
@@ -133,9 +191,7 @@ async function getUserDiscountInfo(chatId) {
             return discountUsage;
         }
         
-        return user.discountUsage || {
-            active_3: 0, active_5: 0, vip_7: 0, legend_10: 0
-        };
+        return user.discountUsage || { active_3: 0, active_5: 0, vip_7: 0, legend_10: 0 };
         
     } catch (error) {
         console.error('❌ Error getting discount info:', error);
@@ -147,60 +203,58 @@ async function getUserDiscountInfo(chatId) {
 function getAvailableDiscounts(purchases, discountUsage) {
     const availableDiscounts = [];
     
-    if (purchases >= 50) {
-        // Легенда: 3 использования скидки 10%
-        if (discountUsage.legend_10 < 3) {
-            availableDiscounts.push({
-                discount: 10,
-                remaining: 3 - discountUsage.legend_10,
-                type: 'legend_10',
-                label: '👑 Скидка Легенды 10%'
-            });
-        }
+    if (purchases >= 50 && discountUsage.legend_10 < 3) {
+        availableDiscounts.push({
+            discount: 10,
+            remaining: 3 - discountUsage.legend_10,
+            type: 'legend_10',
+            label: '👑 Скидка Легенды 10%'
+        });
     }
     
-    if (purchases >= 20) {
-        // VIP: 3 использования скидки 7%
-        if (discountUsage.vip_7 < 3) {
-            availableDiscounts.push({
-                discount: 7,
-                remaining: 3 - discountUsage.vip_7,
-                type: 'vip_7',
-                label: '💎 VIP скидка 7%'
-            });
-        }
+    if (purchases >= 20 && discountUsage.vip_7 < 3) {
+        availableDiscounts.push({
+            discount: 7,
+            remaining: 3 - discountUsage.vip_7,
+            type: 'vip_7',
+            label: '💎 VIP скидка 7%'
+        });
     }
     
-    if (purchases >= 10) {
-        // Постоянный клиент: 2 использования скидки 5%
-        if (discountUsage.active_5 < 2) {
-            availableDiscounts.push({
-                discount: 5,
-                remaining: 2 - discountUsage.active_5,
-                type: 'active_5',
-                label: '⭐ Скидка постоянного клиента 5%'
-            });
-        }
+    if (purchases >= 10 && discountUsage.active_5 < 2) {
+        availableDiscounts.push({
+            discount: 5,
+            remaining: 2 - discountUsage.active_5,
+            type: 'active_5',
+            label: '⭐ Скидка постоянного клиента 5%'
+        });
     }
     
-    if (purchases >= 5) {
-        // Активный покупатель: 1 использование скидки 3%
-        if (discountUsage.active_3 < 1) {
-            availableDiscounts.push({
-                discount: 3,
-                remaining: 1 - discountUsage.active_3,
-                type: 'active_3',
-                label: '🔥 Скидка активного покупателя 3%'
-            });
-        }
+    if (purchases >= 5 && discountUsage.active_3 < 1) {
+        availableDiscounts.push({
+            discount: 3,
+            remaining: 1 - discountUsage.active_3,
+            type: 'active_3',
+            label: '🔥 Скидка активного покупателя 3%'
+        });
     }
     
     return availableDiscounts;
 }
 
+// Заглушка для showPaymentMethods
+async function showPaymentMethods(chatId, orderData) {
+    await bot.sendMessage(chatId, '💎 Выберите способ оплаты (базовая версия)');
+}
+
 // Обновленная функция показа способов оплаты с выбором скидки
 async function showPaymentMethodsWithDiscountChoice(chatId, orderData) {
     try {
+        if (!db) {
+            await showPaymentMethods(chatId, orderData);
+            return;
+        }
+        
         const usersCollection = db.collection('users');
         const user = await usersCollection.findOne({ chatId: chatId });
         const purchases = user ? user.purchases : 0;
@@ -218,7 +272,6 @@ async function showPaymentMethodsWithDiscountChoice(chatId, orderData) {
         orderText += `*Регион:* ${orderData.region === 'KG' ? '🇰🇬 Кыргызстан' : '🇷🇺 Россия'}\n`;
         orderText += `${loyaltyInfo.emoji} *Уровень:* ${loyaltyInfo.level}\n\n`;
         
-        // Показываем доступные скидки
         if (availableDiscounts.length > 0) {
             orderText += `🎟️ *Доступные скидки:*\n`;
             availableDiscounts.forEach(discount => {
@@ -229,10 +282,8 @@ async function showPaymentMethodsWithDiscountChoice(chatId, orderData) {
             });
         }
         
-        // Кнопки для выбора скидки или без скидки
         let keyboard = [];
         
-        // Кнопки со скидками (только если есть доступные)
         if (availableDiscounts.length > 0) {
             orderText += `Выберите способ оплаты:`;
             
@@ -251,7 +302,6 @@ async function showPaymentMethodsWithDiscountChoice(chatId, orderData) {
         } else {
             orderText += `Выберите способ оплаты:`;
             
-            // Обычные кнопки оплаты
             if (orderData.region === 'KG') {
                 keyboard = [
                     [{ text: '💳 O! Деньги', callback_data: `pay_omoney_${orderData.index}` }],
@@ -284,9 +334,12 @@ async function showPaymentMethodsWithDiscountChoice(chatId, orderData) {
 // Функция применения скидки и переход к оплате
 async function applyDiscountAndProceed(chatId, messageId, discountType, orderIndex) {
     try {
+        if (!db) {
+            await bot.sendMessage(chatId, '❌ База данных недоступна.');
+            return;
+        }
+        
         const usersCollection = db.collection('users');
-        const user = await usersCollection.findOne({ chatId: chatId });
-        const purchases = user ? user.purchases : 0;
         const orderData = waitingForAction[chatId];
         
         if (!orderData) {
@@ -298,7 +351,6 @@ async function applyDiscountAndProceed(chatId, messageId, discountType, orderInd
         const selectedItem = diamondsData[orderIndex];
         const currency = orderData.region === 'RU' ? '₽' : 'KGS';
         
-        // Определяем скидку
         let discount = 0;
         let updateField = '';
         
@@ -324,14 +376,12 @@ async function applyDiscountAndProceed(chatId, messageId, discountType, orderInd
         const saved = Math.round(selectedItem.price * (discount / 100));
         const finalPrice = selectedItem.price - saved;
         
-        // Увеличиваем счетчик использования скидки
         await usersCollection.updateOne(
             { chatId: chatId },
             { $inc: { [updateField]: 1 } },
             { upsert: true }
         );
         
-        // Сохраняем информацию о скидке в заказе
         orderData.discountApplied = {
             type: discountType,
             percent: discount,
@@ -340,7 +390,6 @@ async function applyDiscountAndProceed(chatId, messageId, discountType, orderInd
             finalPrice: finalPrice
         };
         
-        // Показываем подтверждение и переходим к способам оплаты
         await showFinalPaymentMethods(chatId, messageId, orderData);
         
     } catch (error) {
@@ -351,47 +400,51 @@ async function applyDiscountAndProceed(chatId, messageId, discountType, orderInd
 
 // Финальное меню оплаты с примененной скидкой
 async function showFinalPaymentMethods(chatId, messageId, orderData) {
-    const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
-    const selectedItem = diamondsData[orderData.index];
-    const currency = orderData.region === 'RU' ? '₽' : 'KGS';
-    
-    let orderText = `💎 *Финальный заказ*\n\n`;
-    orderText += `*Товар:* ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n`;
-    
-    if (orderData.discountApplied) {
-        orderText += `*Цена:* ~${orderData.discountApplied.originalPrice}~ ➜ *${orderData.discountApplied.finalPrice} ${currency}*\n`;
-        orderText += `🎟️ *Скидка:* ${orderData.discountApplied.percent}% (-${orderData.discountApplied.saved} ${currency})\n\n`;
-    } else {
-        orderText += `*Цена:* ${selectedItem.price} ${currency}\n\n`;
-    }
-    
-    orderText += `Выберите способ оплаты:`;
-    
-    let paymentButtons = [];
-    
-    if (orderData.region === 'KG') {
-        paymentButtons = [
-            [{ text: '💳 O! Деньги', callback_data: `pay_omoney_${orderData.index}` }],
-            [{ text: '💰 Balance.kg', callback_data: `pay_balance_${orderData.index}` }],
-            [{ text: '🏦 Банковский перевод', callback_data: `pay_transfer_${orderData.index}` }],
-        ];
-    } else {
-        paymentButtons = [
-            [{ text: '🏦 Оплата переводом', callback_data: `pay_transfer_${orderData.index}` }],
-            [{ text: '₿ Оплата криптовалютой', callback_data: `pay_crypto_${orderData.index}` }],
-        ];
-    }
-    
-    paymentButtons.push([{ text: '🔙 К выбору алмазов', callback_data: 'back_to_diamonds' }]);
-    
-    await bot.editMessageText(orderText, {
-        chat_id: chatId,
-        message_id: messageId,
-        parse_mode: 'Markdown',
-        reply_markup: {
-            inline_keyboard: paymentButtons
+    try {
+        const diamondsData = orderData.region === 'RU' ? diamondsDataRU : diamondsDataKG;
+        const selectedItem = diamondsData[orderData.index];
+        const currency = orderData.region === 'RU' ? '₽' : 'KGS';
+        
+        let orderText = `💎 *Финальный заказ*\n\n`;
+        orderText += `*Товар:* ${typeof selectedItem.amount === 'number' ? `${selectedItem.amount}💎` : selectedItem.amount}\n`;
+        
+        if (orderData.discountApplied) {
+            orderText += `*Цена:* ~${orderData.discountApplied.originalPrice}~ ➜ *${orderData.discountApplied.finalPrice} ${currency}*\n`;
+            orderText += `🎟️ *Скидка:* ${orderData.discountApplied.percent}% (-${orderData.discountApplied.saved} ${currency})\n\n`;
+        } else {
+            orderText += `*Цена:* ${selectedItem.price} ${currency}\n\n`;
         }
-    });
+        
+        orderText += `Выберите способ оплаты:`;
+        
+        let paymentButtons = [];
+        
+        if (orderData.region === 'KG') {
+            paymentButtons = [
+                [{ text: '💳 O! Деньги', callback_data: `pay_omoney_${orderData.index}` }],
+                [{ text: '💰 Balance.kg', callback_data: `pay_balance_${orderData.index}` }],
+                [{ text: '🏦 Банковский перевод', callback_data: `pay_transfer_${orderData.index}` }],
+            ];
+        } else {
+            paymentButtons = [
+                [{ text: '🏦 Оплата переводом', callback_data: `pay_transfer_${orderData.index}` }],
+                [{ text: '₿ Оплата криптовалютой', callback_data: `pay_crypto_${orderData.index}` }],
+            ];
+        }
+        
+        paymentButtons.push([{ text: '🔙 К выбору алмазов', callback_data: 'back_to_diamonds' }]);
+        
+        await bot.editMessageText(orderText, {
+            chat_id: chatId,
+            message_id: messageId,
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: paymentButtons
+            }
+        });
+    } catch (error) {
+        console.error('❌ Error showing final payment methods:', error);
+    }
 }
 
 // Обновленная функция показа истории с лимитированными скидками
@@ -432,13 +485,11 @@ async function showPurchaseHistoryWithLimitedBenefits(chatId) {
             }
         }
         
-        // Показываем преимущества уровня
         historyText += `\n🏆 *ВАШИ ПРЕИМУЩЕСТВА:*\n`;
         loyaltyInfo.benefits.forEach(benefit => {
             historyText += `${benefit}\n`;
         });
         
-        // Показываем доступные скидки
         if (availableDiscounts.length > 0) {
             historyText += `\n🎟️ *ДОСТУПНЫЕ СКИДКИ:*\n`;
             availableDiscounts.forEach(discount => {
@@ -448,7 +499,6 @@ async function showPurchaseHistoryWithLimitedBenefits(chatId) {
             historyText += `\n🎟️ *Все скидки использованы* ✨`;
         }
         
-        // Прогресс до следующего уровня
         if (loyaltyInfo.nextLevel) {
             historyText += `\n\n🎯 *До уровня "${loyaltyInfo.nextLevel.name}":* ${loyaltyInfo.nextLevel.need} покупок`;
         } else {
@@ -472,15 +522,64 @@ async function showPurchaseHistoryWithLimitedBenefits(chatId) {
     }
 }
 
-// Добавьте эти обработчики в основной callback handler:
-/*
-} else if (q.data.startsWith('use_discount_')) {
-    const parts = q.data.split('_');
-    const discountType = parts[2] + '_' + parts[3]; // например "legend_10"
-    const orderIndex = parts[4];
-    await applyDiscountAndProceed(chatId, messageId, discountType, orderIndex);
+// Настройка обработчиков бота
+function setupBotHandlers() {
+    if (!bot) return;
     
-} else if (q.data.startsWith('no_discount_')) {
-    const orderIndex = q.data.split('_')[2];
-    await showFinalPaymentMethods(chatId, messageId, waitingForAction[chatId]);
-*/
+    // Обработчик команды /start
+    bot.onText(/\/start/, async (msg) => {
+        const chatId = msg.chat.id;
+        await bot.sendMessage(chatId, 'Добро пожаловать! Бот запущен и готов к работе.');
+    });
+    
+    // Обработчик callback_query
+    bot.on('callback_query', async (query) => {
+        const chatId = query.message.chat.id;
+        const messageId = query.message.message_id;
+        const data = query.data;
+        
+        try {
+            if (data.startsWith('use_discount_')) {
+                const parts = data.split('_');
+                const discountType = parts[2] + '_' + parts[3];
+                const orderIndex = parseInt(parts[4]);
+                await applyDiscountAndProceed(chatId, messageId, discountType, orderIndex);
+                
+            } else if (data.startsWith('no_discount_')) {
+                const orderIndex = parseInt(data.split('_')[2]);
+                await showFinalPaymentMethods(chatId, messageId, waitingForAction[chatId]);
+                
+            } else if (data === 'purchase_history') {
+                await showPurchaseHistoryWithLimitedBenefits(chatId);
+                
+            } else {
+                await bot.answerCallbackQuery(query.id, 'Функция в разработке');
+            }
+            
+        } catch (error) {
+            console.error('❌ Callback query error:', error);
+            await bot.answerCallbackQuery(query.id, 'Произошла ошибка');
+        }
+    });
+}
+
+// Запуск сервера
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📡 Bot server started successfully`);
+    console.log(`🌐 Health check available at /health`);
+    
+    // Инициализация бота после запуска сервера
+    initializeBot();
+});
+
+// Обработка ошибок для graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('👋 SIGTERM received, shutting down gracefully');
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    console.log('👋 SIGINT received, shutting down gracefully');
+    process.exit(0);
+});
