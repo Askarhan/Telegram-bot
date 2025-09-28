@@ -438,6 +438,255 @@ async function showDiamondsMenu(chatId, messageId = null) {
     }
 }
 
+// Форма заказа
+async function showOrderForm(chatId, messageId, diamondIndex) {
+    try {
+        const diamondsData = selectedRegion === 'RU' ? DIAMONDS_DATA_RU : DIAMONDS_DATA_KG;
+        const selectedDiamond = diamondsData[diamondIndex];
+
+        if (!selectedDiamond) {
+            await bot.sendMessage(chatId, '❌ Неверный выбор пакета алмазов');
+            return;
+        }
+
+        const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
+        const amountText = typeof selectedDiamond.amount === 'number'
+            ? `${selectedDiamond.amount} 💎`
+            : selectedDiamond.amount;
+
+        const orderText =
+            `🛒 *Оформление заказа*\n\n` +
+            `💎 *Товар:* ${amountText}\n` +
+            `💰 *Цена:* ${selectedDiamond.price.toLocaleString('ru-RU')} ${currency}\n` +
+            `🌍 *Регион:* ${selectedRegion === 'RU' ? '🇷🇺 Россия' : '🇰🇬 Кыргызстан'}\n\n` +
+            `📝 *Для завершения заказа введите:*\n` +
+            `• ID игрока (цифры)\n` +
+            `• Server ID (цифры)\n` +
+            `• Промокод (опционально)\n\n` +
+            `*Формат:* \`ID SERVER ПРОМОКОД\`\n` +
+            `*Пример:* \`123456789 1234 WELCOME10\`\n\n` +
+            `💡 Промокод можно не указывать`;
+
+        const keyboard = [
+            [{ text: '🔙 К выбору алмазов', callback_data: 'back_to_diamonds' }],
+            [{ text: '🏠 Главное меню', callback_data: 'back_to_start' }]
+        ];
+
+        const options = {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+        };
+
+        if (messageId) {
+            await safeEditMessage(chatId, messageId, orderText, options);
+        } else {
+            await bot.sendMessage(chatId, orderText, options);
+        }
+
+        // Сохраняем информацию о заказе для данного пользователя
+        if (!global.userOrders) global.userOrders = {};
+        global.userOrders[chatId] = {
+            diamondIndex,
+            region: selectedRegion,
+            diamond: selectedDiamond,
+            timestamp: new Date()
+        };
+
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'order_form_shown', {
+                diamondIndex,
+                amount: selectedDiamond.amount,
+                price: selectedDiamond.price,
+                region: selectedRegion
+            });
+        }
+
+    } catch (error) {
+        if (logger && logger.error) {
+            logger.error('Error showing order form:', error);
+        }
+        await bot.sendMessage(chatId, '❌ Ошибка при создании формы заказа');
+    }
+}
+
+// Обработка ввода данных заказа
+async function processOrderInput(chatId, text) {
+    try {
+        const orderInfo = global.userOrders[chatId];
+        if (!orderInfo) {
+            await bot.sendMessage(chatId, '❌ Активный заказ не найден. Начните сначала.');
+            return;
+        }
+
+        // Парсим ввод: ID SERVER ПРОМОКОД
+        const parts = text.trim().split(/\s+/);
+        if (parts.length < 2) {
+            await bot.sendMessage(chatId,
+                '❌ *Неверный формат\\!*\n\n' +
+                'Укажите как минимум:\n' +
+                '• ID игрока\n' +
+                '• Server ID\n\n' +
+                '*Пример:* `123456789 1234`',
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        const playerId = parts[0];
+        const serverId = parts[1];
+        const promoCode = parts[2] || null;
+
+        // Валидация ID
+        if (!/^\d+$/.test(playerId) || !/^\d+$/.test(serverId)) {
+            await bot.sendMessage(chatId,
+                '❌ *ID должны содержать только цифры\\!*\n\n' +
+                'Player ID и Server ID должны быть числами\\.\n' +
+                '*Пример:* `123456789 1234`',
+                { parse_mode: 'Markdown' }
+            );
+            return;
+        }
+
+        // Проверяем промокод если указан
+        let discount = 0;
+        let discountAmount = 0;
+        let promoValid = false;
+
+        if (promoCode && promoService) {
+            try {
+                const promoResult = await promoService.validatePromo(promoCode, chatId);
+                if (promoResult.valid) {
+                    discount = promoResult.discount;
+                    discountAmount = Math.round(orderInfo.diamond.price * discount / 100);
+                    promoValid = true;
+                }
+            } catch (error) {
+                if (logger && logger.error) {
+                    logger.error('Error validating promo code:', error);
+                }
+            }
+        }
+
+        // Создаем заказ
+        await createPaymentOrder(chatId, {
+            ...orderInfo,
+            playerId,
+            serverId,
+            promoCode,
+            discount,
+            discountAmount,
+            promoValid
+        });
+
+    } catch (error) {
+        if (logger && logger.error) {
+            logger.error('Error processing order input:', error);
+        }
+        await bot.sendMessage(chatId, '❌ Ошибка при обработке заказа');
+    }
+}
+
+// Создание платежного заказа
+async function createPaymentOrder(chatId, orderData) {
+    try {
+        const finalPrice = orderData.diamond.price - orderData.discountAmount;
+        const currency = orderData.region === 'RU' ? 'RUB' : 'KGS';
+        const amountText = typeof orderData.diamond.amount === 'number'
+            ? `${orderData.diamond.amount} 💎`
+            : orderData.diamond.amount;
+
+        // Подтверждение заказа
+        let confirmText = `✅ *Подтверждение заказа*\n\n`;
+        confirmText += `💎 *Товар:* ${amountText}\n`;
+        confirmText += `👤 *Player ID:* ${orderData.playerId}\n`;
+        confirmText += `🌐 *Server ID:* ${orderData.serverId}\n`;
+        confirmText += `🌍 *Регион:* ${orderData.region === 'RU' ? '🇷🇺 Россия' : '🇰🇬 Кыргызстан'}\n\n`;
+
+        if (orderData.promoValid) {
+            confirmText += `🎫 *Промокод:* ${orderData.promoCode} (-${orderData.discount}\\%)\n`;
+            confirmText += `💰 *Цена:* ~~${orderData.diamond.price}~~ → *${finalPrice}* ${currency}\n`;
+            confirmText += `💸 *Скидка:* ${orderData.discountAmount} ${currency}\n\n`;
+        } else {
+            confirmText += `💰 *Цена:* ${finalPrice} ${currency}\n\n`;
+            if (orderData.promoCode) {
+                confirmText += `❌ Промокод "${orderData.promoCode}" недействителен\n\n`;
+            }
+        }
+
+        // Создание ссылки для оплаты CryptoCloud (пример)
+        const paymentData = {
+            shop_id: CRYPTOCLOUD_SHOP_ID,
+            amount: finalPrice,
+            currency: currency,
+            order_id: `${chatId}_${Date.now()}`,
+            description: `MLBB ${amountText} для игрока ${orderData.playerId}`,
+            callback_url: `${process.env.WEBHOOK_URL || 'http://localhost:3000'}/payment/callback`,
+            success_url: `${process.env.WEBHOOK_URL || 'http://localhost:3000'}/payment/success`,
+            fail_url: `${process.env.WEBHOOK_URL || 'http://localhost:3000'}/payment/fail`
+        };
+
+        // В реальной интеграции здесь будет API запрос к CryptoCloud
+        const paymentUrl = `https://pay.cryptocloud.plus/pay/${paymentData.order_id}`;
+
+        confirmText += `🔐 *Безопасная оплата через CryptoCloud*\n`;
+        confirmText += `⏰ Время выполнения: 5-15 минут\n`;
+        confirmText += `✨ Автоматическое зачисление алмазов`;
+
+        const keyboard = [
+            [{ text: '💳 Оплатить', url: paymentUrl }],
+            [
+                { text: '❌ Отменить', callback_data: 'cancel_order' },
+                { text: '🔙 Изменить', callback_data: 'back_to_diamonds' }
+            ]
+        ];
+
+        await bot.sendMessage(chatId, confirmText, {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+
+        // Сохраняем заказ в базу данных
+        if (db) {
+            const ordersCollection = db.collection('orders');
+            await ordersCollection.insertOne({
+                chatId,
+                orderId: paymentData.order_id,
+                diamond: orderData.diamond,
+                playerId: orderData.playerId,
+                serverId: orderData.serverId,
+                region: orderData.region,
+                originalPrice: orderData.diamond.price,
+                finalPrice,
+                promoCode: orderData.promoCode,
+                discount: orderData.discount,
+                discountAmount: orderData.discountAmount,
+                status: 'pending',
+                createdAt: new Date()
+            });
+        }
+
+        // Очищаем временный заказ
+        if (global.userOrders && global.userOrders[chatId]) {
+            delete global.userOrders[chatId];
+        }
+
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'payment_order_created', {
+                orderId: paymentData.order_id,
+                amount: amountText,
+                finalPrice,
+                promoUsed: orderData.promoValid
+            });
+        }
+
+    } catch (error) {
+        if (logger && logger.error) {
+            logger.error('Error creating payment order:', error);
+        }
+        await bot.sendMessage(chatId, '❌ Ошибка при создании заказа на оплату');
+    }
+}
+
 // Обработчики команд
 bot.onText(/\/start(.*)/, async (msg, match) => {
     const chatId = msg.chat.id;
@@ -459,6 +708,20 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     }
 
     await showMainMenu(chatId);
+});
+
+// Обработчик текстовых сообщений для заказов
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
+
+    // Игнорируем команды и callback queries
+    if (!text || text.startsWith('/') || msg.from.is_bot) return;
+
+    // Проверяем, есть ли активный заказ для пользователя
+    if (global.userOrders && global.userOrders[chatId]) {
+        await processOrderInput(chatId, text);
+    }
 });
 
 // Обработчик callback запросов
@@ -495,9 +758,18 @@ bot.on('callback_query', async (q) => {
             await showDiamondsMenu(chatId, messageId);
         } else if (q.data === 'back_to_regions') {
             await showRegionMenu(chatId, messageId);
+        } else if (q.data === 'back_to_diamonds') {
+            await showDiamondsMenu(chatId, messageId);
+        } else if (q.data === 'cancel_order') {
+            // Очищаем активный заказ
+            if (global.userOrders && global.userOrders[chatId]) {
+                delete global.userOrders[chatId];
+            }
+            await bot.sendMessage(chatId, '❌ Заказ отменен');
+            await showMainMenu(chatId);
         } else if (q.data.startsWith('diamond_')) {
-            // Здесь будет обработка выбора алмазов
-            await bot.sendMessage(chatId, 'Обработка покупки будет добавлена в следующей версии');
+            const diamondIndex = parseInt(q.data.split('_')[1]);
+            await showOrderForm(chatId, messageId, diamondIndex);
         }
 
     } catch (error) {
