@@ -123,7 +123,7 @@ async function showMainMenu(chatId, messageId = null) {
         [{ text: '📊 История покупок', callback_data: 'purchase_history' }],
         [
             { text: '📞 Поддержка', callback_data: 'support' },
-            { text: '💖 Отзывы', callback_data: 'reviews' }
+            { text: '💖 Отзывы', url: 'https://t.me/annurreviews' }
         ]
     ];
 
@@ -455,9 +455,7 @@ bot.on('callback_query', async (q) => {
         } else if (q.data === 'back_to_start') {
             await showMainMenu(chatId, messageId);
         } else if (q.data === 'support') {
-            await bot.sendMessage(chatId, '📞 *Поддержка*\n\nПо всем вопросам обращайтесь: @annur_admin', { parse_mode: 'Markdown' });
-        } else if (q.data === 'reviews') {
-            await bot.sendMessage(chatId, '💖 Отзывы наших клиентов: https://t.me/annurreviews');
+            await bot.sendMessage(chatId, '📞 *Поддержка*\n\nПо всем вопросам обращайтесь к администратору: @annur_admin', { parse_mode: 'Markdown' });
         } else if (q.data.startsWith('region_')) {
             const region = q.data.split('_')[1].toUpperCase();
             selectedRegion = region;
@@ -474,14 +472,6 @@ bot.on('callback_query', async (q) => {
         await bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуйте еще раз.');
     }
 });
-
-// Дополнительные команды из BotHandlers
-if (botHandlers) {
-    bot.onText(/\/stats/, (msg) => botHandlers.handleStats(msg));
-    bot.onText(/\/createpromo (.+)/, (msg, match) => botHandlers.handleCreatePromo(msg, match));
-    bot.onText(/\/history/, (msg) => botHandlers.handleHistory(msg));
-    bot.onText(/\/mybonus/, (msg) => botHandlers.handleMyBonus(msg));
-}
 
 // Express сервер
 app.get('/', (req, res) => {
@@ -534,6 +524,14 @@ async function startBot() {
         if (!dbConnected) {
             logger.error('❌ Не удалось подключиться к базе данных');
             process.exit(1);
+        }
+
+        // Регистрация дополнительных команд после инициализации сервисов
+        if (botHandlers) {
+            bot.onText(/\/stats/, (msg) => botHandlers.handleStats(msg));
+            bot.onText(/\/createpromo (.+)/, (msg, match) => botHandlers.handleCreatePromo(msg, match));
+            bot.onText(/\/history/, (msg) => botHandlers.handleHistory(msg));
+            bot.onText(/\/mybonus/, (msg) => botHandlers.handleMyBonus(msg));
         }
 
         if (WEBHOOK_URL) {
