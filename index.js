@@ -267,9 +267,9 @@ async function showPurchaseHistory(chatId) {
 
         const usersCollection = db.collection('users');
         const user = await usersCollection.findOne({ chatId: chatId });
-        const purchases = user ? user.purchases : 0;
-        const totalSpent = user ? user.totalSpent : 0;
-        const lastPurchase = user ? user.lastPurchase : null;
+        const purchases = (user && user.purchases) ? user.purchases : 0;
+        const totalSpent = (user && user.totalSpent) ? user.totalSpent : 0;
+        const lastPurchase = (user && user.lastPurchase) ? user.lastPurchase : null;
 
         // Получаем реферальную статистику
         let referralStats = null;
@@ -285,7 +285,7 @@ async function showPurchaseHistory(chatId) {
         historyText += `👤 *Покупки:* ${purchases}\n`;
         historyText += `💰 *Потрачено:* ${totalSpent.toFixed(2)}\n`;
 
-        if (referralStats) {
+        if (referralStats && referralStats.currentBonus !== undefined) {
             historyText += `💎 *Реферальные бонусы:* ${referralStats.currentBonus}\n`;
         }
 
@@ -303,8 +303,10 @@ async function showPurchaseHistory(chatId) {
                 historyText += `⏳ *До бонуса:* ${untilBonus} покупок\n`;
             }
 
-            if (lastPurchase) {
+            if (lastPurchase && lastPurchase instanceof Date) {
                 historyText += `📅 *Последняя покупка:* ${lastPurchase.toLocaleDateString('ru-RU')}\n`;
+            } else if (lastPurchase && typeof lastPurchase === 'string') {
+                historyText += `📅 *Последняя покупка:* ${new Date(lastPurchase).toLocaleDateString('ru-RU')}\n`;
             }
         }
 
@@ -335,8 +337,15 @@ async function showPurchaseHistory(chatId) {
         }
 
     } catch (error) {
-        logger.error('Error showing purchase history:', error);
-        await bot.sendMessage(chatId, '❌ Ошибка получения истории покупок');
+        if (logger && logger.error) {
+            logger.error('Error showing purchase history:', error);
+        } else {
+            console.error('Error showing purchase history:', error);
+        }
+
+        if (bot && bot.sendMessage) {
+            await bot.sendMessage(chatId, '❌ Ошибка получения истории покупок');
+        }
     }
 }
 
