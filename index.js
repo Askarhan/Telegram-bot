@@ -613,32 +613,37 @@ async function createPaymentOrder(chatId, orderData) {
             }
         }
 
-        // Создание ссылки для оплаты CryptoCloud (пример)
-        const paymentData = {
-            shop_id: CRYPTOCLOUD_SHOP_ID,
-            amount: finalPrice,
-            currency: currency,
-            order_id: `${chatId}_${Date.now()}`,
-            description: `MLBB ${amountText} для игрока ${orderData.playerId}`,
-            callback_url: `${process.env.WEBHOOK_URL || 'http://localhost:3000'}/payment/callback`,
-            success_url: `${process.env.WEBHOOK_URL || 'http://localhost:3000'}/payment/success`,
-            fail_url: `${process.env.WEBHOOK_URL || 'http://localhost:3000'}/payment/fail`
-        };
-
-        // В реальной интеграции здесь будет API запрос к CryptoCloud
-        const paymentUrl = `https://pay.cryptocloud.plus/pay/${paymentData.order_id}`;
-
-        confirmText += `🔐 *Безопасная оплата через CryptoCloud*\n`;
+        confirmText += `💳 *Выберите способ оплаты:*\n`;
         confirmText += `⏰ Время выполнения: 5-15 минут\n`;
         confirmText += `✨ Автоматическое зачисление алмазов`;
 
-        const keyboard = [
-            [{ text: '💳 Оплатить', url: paymentUrl }],
-            [
-                { text: '❌ Отменить', callback_data: 'cancel_order' },
-                { text: '🔙 Изменить', callback_data: 'back_to_diamonds' }
-            ]
-        ];
+        // Создаем уникальный ID заказа
+        const orderId = `${chatId}_${Date.now()}`;
+
+        // Определяем способы оплаты по регионам
+        let keyboard = [];
+
+        if (orderData.region === 'RU') {
+            // Россия: карты, криптовалюта
+            keyboard = [
+                [{ text: '💳 Банковская карта', callback_data: `pay_card_${orderId}` }],
+                [{ text: '₿ Криптовалюта', callback_data: `pay_crypto_${orderId}` }],
+                [
+                    { text: '❌ Отменить', callback_data: 'cancel_order' },
+                    { text: '🔙 Изменить', callback_data: 'back_to_diamonds' }
+                ]
+            ];
+        } else {
+            // Кыргызстан: O! Деньги, Balance.kg
+            keyboard = [
+                [{ text: '📱 O! Деньги', callback_data: `pay_odengi_${orderId}` }],
+                [{ text: '💰 Balance.kg', callback_data: `pay_balance_${orderId}` }],
+                [
+                    { text: '❌ Отменить', callback_data: 'cancel_order' },
+                    { text: '🔙 Изменить', callback_data: 'back_to_diamonds' }
+                ]
+            ];
+        }
 
         await bot.sendMessage(chatId, confirmText, {
             parse_mode: 'Markdown',
@@ -650,17 +655,18 @@ async function createPaymentOrder(chatId, orderData) {
             const ordersCollection = db.collection('orders');
             await ordersCollection.insertOne({
                 chatId,
-                orderId: paymentData.order_id,
+                orderId: orderId,
                 diamond: orderData.diamond,
                 playerId: orderData.playerId,
                 serverId: orderData.serverId,
                 region: orderData.region,
                 originalPrice: orderData.diamond.price,
                 finalPrice,
+                currency,
                 promoCode: orderData.promoCode,
                 discount: orderData.discount,
                 discountAmount: orderData.discountAmount,
-                status: 'pending',
+                status: 'awaiting_payment',
                 createdAt: new Date()
             });
         }
@@ -671,10 +677,11 @@ async function createPaymentOrder(chatId, orderData) {
         }
 
         if (logger && logger.userAction) {
-            logger.userAction(chatId, 'payment_order_created', {
-                orderId: paymentData.order_id,
+            logger.userAction(chatId, 'payment_methods_shown', {
+                orderId: orderId,
                 amount: amountText,
                 finalPrice,
+                region: orderData.region,
                 promoUsed: orderData.promoValid
             });
         }
@@ -684,6 +691,140 @@ async function createPaymentOrder(chatId, orderData) {
             logger.error('Error creating payment order:', error);
         }
         await bot.sendMessage(chatId, '❌ Ошибка при создании заказа на оплату');
+    }
+}
+
+// Обработка выбора способа оплаты
+async function handlePaymentMethod(chatId, messageId, paymentData) {
+    try {
+        const parts = paymentData.split('_');
+        const paymentMethod = parts[1]; // card, crypto, odengi, balance
+        const orderId = parts.slice(2).join('_'); // ID заказа
+
+        // Получаем заказ из базы данных
+        if (!db) {
+            await bot.sendMessage(chatId, '❌ База данных недоступна');
+            return;
+        }
+
+        const ordersCollection = db.collection('orders');
+        const order = await ordersCollection.findOne({ orderId: orderId, chatId: chatId });
+
+        if (!order) {
+            await bot.sendMessage(chatId, '❌ Заказ не найден');
+            return;
+        }
+
+        let paymentText = '';
+        let paymentInstructions = '';
+        let keyboard = [];
+
+        switch (paymentMethod) {
+            case 'card':
+                paymentText = `💳 *Оплата банковской картой*\n\n`;
+                paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
+                paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
+                paymentInstructions = `📝 *Инструкция:*\n`;
+                paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на карту:\n`;
+                paymentInstructions += `💳 \`4400 4301 2345 6789\` \\(Сбербанк\\)\n`;
+                paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
+                paymentInstructions += `3\\. Отправьте скриншот перевода админу\n\n`;
+                paymentInstructions += `⏰ Алмазы поступят в течение 5\\-15 минут`;
+
+                keyboard = [
+                    [{ text: '📱 Связаться с админом', url: `tg://user?id=${ADMIN_CHAT_ID}` }],
+                    [{ text: '🔙 Назад', callback_data: 'back_to_diamonds' }]
+                ];
+                break;
+
+            case 'crypto':
+                paymentText = `₿ *Оплата криптовалютой*\n\n`;
+                paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
+                paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
+                paymentInstructions = `📝 *Инструкция:*\n`;
+                paymentInstructions += `1\\. Переведите эквивалент ${order.finalPrice} ${order.currency} в USDT\n`;
+                paymentInstructions += `💎 Адрес: \`TQn9Y2khEsLJqKTtKx5YYY123example\`\n`;
+                paymentInstructions += `2\\. В memo укажите: \`${orderId}\`\n`;
+                paymentInstructions += `3\\. Отправьте hash транзакции админу\n\n`;
+                paymentInstructions += `⏰ Алмазы поступят в течение 5\\-15 минут`;
+
+                keyboard = [
+                    [{ text: '📱 Связаться с админом', url: `tg://user?id=${ADMIN_CHAT_ID}` }],
+                    [{ text: '🔙 Назад', callback_data: 'back_to_diamonds' }]
+                ];
+                break;
+
+            case 'odengi':
+                paymentText = `📱 *Оплата через O! Деньги*\n\n`;
+                paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
+                paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
+                paymentInstructions = `📝 *Инструкция:*\n`;
+                paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер:\n`;
+                paymentInstructions += `📞 \`\\+996 700 123 456\` \\(O\\! Деньги\\)\n`;
+                paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
+                paymentInstructions += `3\\. Отправьте скриншот перевода админу\n\n`;
+                paymentInstructions += `⏰ Алмазы поступят в течение 5\\-15 минут`;
+
+                keyboard = [
+                    [{ text: '📱 Связаться с админом', url: `tg://user?id=${ADMIN_CHAT_ID}` }],
+                    [{ text: '🔙 Назад', callback_data: 'back_to_diamonds' }]
+                ];
+                break;
+
+            case 'balance':
+                paymentText = `💰 *Оплата через Balance\\.kg*\n\n`;
+                paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
+                paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
+                paymentInstructions = `📝 *Инструкция:*\n`;
+                paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер:\n`;
+                paymentInstructions += `📞 \`\\+996 555 123 456\` \\(Balance\\.kg\\)\n`;
+                paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
+                paymentInstructions += `3\\. Отправьте скриншот перевода админу\n\n`;
+                paymentInstructions += `⏰ Алмазы поступят в течение 5\\-15 минут`;
+
+                keyboard = [
+                    [{ text: '📱 Связаться с админом', url: `tg://user?id=${ADMIN_CHAT_ID}` }],
+                    [{ text: '🔙 Назад', callback_data: 'back_to_diamonds' }]
+                ];
+                break;
+
+            default:
+                await bot.sendMessage(chatId, '❌ Неизвестный способ оплаты');
+                return;
+        }
+
+        const fullText = paymentText + paymentInstructions;
+
+        await safeEditMessage(chatId, messageId, fullText, {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+
+        // Обновляем статус заказа
+        await ordersCollection.updateOne(
+            { orderId: orderId },
+            {
+                $set: {
+                    status: 'payment_instructions_sent',
+                    paymentMethod: paymentMethod,
+                    updatedAt: new Date()
+                }
+            }
+        );
+
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'payment_method_selected', {
+                orderId,
+                method: paymentMethod,
+                amount: order.finalPrice
+            });
+        }
+
+    } catch (error) {
+        if (logger && logger.error) {
+            logger.error('Error handling payment method:', error);
+        }
+        await bot.sendMessage(chatId, '❌ Ошибка при обработке способа оплаты');
     }
 }
 
@@ -767,6 +908,8 @@ bot.on('callback_query', async (q) => {
             }
             await bot.sendMessage(chatId, '❌ Заказ отменен');
             await showMainMenu(chatId);
+        } else if (q.data.startsWith('pay_')) {
+            await handlePaymentMethod(chatId, messageId, q.data);
         } else if (q.data.startsWith('diamond_')) {
             const diamondIndex = parseInt(q.data.split('_')[1]);
             await showOrderForm(chatId, messageId, diamondIndex);
