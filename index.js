@@ -36,17 +36,27 @@ const WEBHOOK_URL = process.env.WEBHOOK_URL;
 if (!TOKEN || !MONGO_URI || !CRYPTOCLOUD_API_KEY) {
     logger.error('❌ Отсутствуют обязательные переменные окружения!');
     logger.error('Убедитесь, что настроены: TOKEN, MONGO_URI, CRYPTOCLOUD_API_KEY');
-    process.exit(1);
+
+    // В режиме тестирования продолжаем без выхода
+    if (process.argv.includes('--test-mode')) {
+        logger.warn('⚠️ Запуск в тестовом режиме без полной конфигурации');
+    } else {
+        process.exit(1);
+    }
 }
 
 // Инициализация бота
 let bot;
-if (WEBHOOK_URL) {
-    bot = new TelegramBot(TOKEN);
-    logger.info('🔗 Bot initialized in webhook mode');
-} else {
-    bot = new TelegramBot(TOKEN, { polling: true });
-    logger.info('📊 Bot initialized in polling mode');
+if (TOKEN) {
+    if (WEBHOOK_URL) {
+        bot = new TelegramBot(TOKEN);
+        logger.info('🔗 Bot initialized in webhook mode');
+    } else {
+        bot = new TelegramBot(TOKEN, { polling: true });
+        logger.info('📊 Bot initialized in polling mode');
+    }
+} else if (process.argv.includes('--test-mode')) {
+    logger.warn('⚠️ Bot не инициализирован - нет TOKEN');
 }
 
 // Глобальные переменные
@@ -184,7 +194,9 @@ async function showReferralMenu(chatId, messageId = null) {
             await bot.sendMessage(chatId, referralText, options);
         }
 
-        logger.userAction(chatId, 'referral_menu_viewed');
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'referral_menu_viewed');
+        }
 
     } catch (error) {
         logger.error('Error showing referral menu:', error);
@@ -235,7 +247,9 @@ async function showPromoMenu(chatId, messageId = null) {
             await bot.sendMessage(chatId, promoText, options);
         }
 
-        logger.userAction(chatId, 'promo_menu_viewed');
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'promo_menu_viewed');
+        }
 
     } catch (error) {
         logger.error('Error showing promo menu:', error);
@@ -316,7 +330,9 @@ async function showPurchaseHistory(chatId) {
             reply_markup: { inline_keyboard: keyboard }
         });
 
-        logger.userAction(chatId, 'purchase_history_viewed');
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'purchase_history_viewed');
+        }
 
     } catch (error) {
         logger.error('Error showing purchase history:', error);
@@ -397,7 +413,9 @@ async function showDiamondsMenu(chatId, messageId = null) {
             await bot.sendMessage(chatId, menuText, options);
         }
 
-        logger.userAction(chatId, 'diamonds_menu_viewed', { region: selectedRegion });
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'diamonds_menu_viewed', { region: selectedRegion });
+        }
 
     } catch (error) {
         logger.error('Error showing diamonds menu', error);
@@ -410,7 +428,9 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     const chatId = msg.chat.id;
     const referralCode = match[1] ? match[1].trim() : null;
 
-    logger.userAction(chatId, 'bot_started', { referralCode });
+    if (logger && logger.userAction) {
+        logger.userAction(chatId, 'bot_started', { referralCode });
+    }
 
     if (referralCode && referralService) {
         try {
