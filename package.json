@@ -1,23 +1,28 @@
 {
   "name": "telegram-bot-shop",
-  "version": "1.1.0",
-  "description": "Secure Telegram bot for diamond shop",
-  "main": "index.js",
+  "version": "2.0.0",
+  "description": "Advanced Telegram bot for diamond shop with referrals and promos",
+  "main": "index_improved.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js"
+    "start": "node index_improved.js",
+    "dev": "nodemon index_improved.js",
+    "old": "node index.js",
+    "test": "echo \"Tests will be added soon\" && exit 0"
   },
   "keywords": [
     "telegram",
     "bot",
     "shop",
-    "diamonds"
+    "diamonds",
+    "referrals",
+    "promo-codes",
+    "mlbb"
   ],
-  "author": "Your Name",
+  "author": "Askarhan",
   "license": "MIT",
   "dependencies": {
     "express": "^4.19.2",
-    "node-telegram-bot-api": "^0.66.0", 
+    "node-telegram-bot-api": "^0.66.0",
     "mongodb": "^6.8.0",
     "axios": "^1.7.4"
   },
