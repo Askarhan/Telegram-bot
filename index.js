@@ -1,13 +1,12 @@
 // ANNUR DIAMONDS Telegram Bot v2.0
-// Полная версия с реферальной системой, промокодами и улучшенной безопасностью
+// Модульная архитектура с реферальной системой и промокодами
 
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const { MongoClient } = require('mongodb');
-const axios = require('axios');
 
 // Импорт модулей
-const { DIAMONDS_DATA_RU, DIAMONDS_DATA_KG, LOYALTY_LEVELS, EMOJIS, LIMITS } = require('./config/constants');
+const { DIAMONDS_DATA_RU, DIAMONDS_DATA_KG, LOYALTY_LEVELS } = require('./config/constants');
 const logger = require('./utils/logger');
 const Validators = require('./utils/validators');
 const ReferralService = require('./services/referralService');
@@ -15,7 +14,6 @@ const PromoService = require('./services/promoService');
 const BotHandlers = require('./handlers/botHandlers');
 
 logger.info('🚀 Starting ANNUR DIAMONDS Bot v2.0');
-logger.info('🔍 Checking environment variables...');
 
 console.log('🔍 Checking environment variables:');
 console.log('TOKEN exists:', !!process.env.TOKEN);
@@ -48,245 +46,131 @@ if (WEBHOOK_URL) {
     logger.info('🔗 Bot initialized in webhook mode');
 } else {
     bot = new TelegramBot(TOKEN, { polling: true });
-    logger.info('🔄 Bot initialized in polling mode');
+    logger.info('📊 Bot initialized in polling mode');
 }
 
-const client = new MongoClient(MONGO_URI);
-
-// Настройки бота
-const adminChatId = 895583535;
-const waitingForAction = {};
+// Глобальные переменные
+let db = null;
+let client = null;
+let referralService = null;
+let promoService = null;
+let botHandlers = null;
 let selectedRegion = 'RU';
-let db, referralService, promoService, botHandlers;
 
-// Подключение к базе данных
-async function connectToDb() {
+// Подключение к MongoDB
+async function connectToDatabase() {
     try {
+        client = new MongoClient(MONGO_URI, {
+            useUnifiedTopology: true,
+            serverSelectionTimeoutMS: 5000,
+        });
         await client.connect();
-        db = client.db('bot_db');
+        db = client.db('telegram_bot');
 
         // Инициализация сервисов
         referralService = new ReferralService(db);
         promoService = new PromoService(db);
-        botHandlers = new BotHandlers(bot, db, referralService, promoService, adminChatId);
+        botHandlers = new BotHandlers(bot, db, referralService, promoService);
 
-        logger.success("✅ Connected to MongoDB and services initialized");
+        logger.info('✅ Database connected successfully');
         return true;
-    } catch (e) {
-        logger.error("❌ Failed to connect to MongoDB", e);
+    } catch (error) {
+        logger.error('❌ Database connection failed:', error);
         return false;
     }
 }
 
-// Функция установки webhook
-async function setWebhook() {
+// Вспомогательные функции
+async function safeEditMessage(chatId, messageId, text, options = {}) {
     try {
-        const webhookUrl = `${WEBHOOK_URL}/webhook_telegram`;
-        await bot.setWebHook(webhookUrl);
-        logger.success(`✅ Webhook установлен: ${webhookUrl}`);
-    } catch (error) {
-        logger.error('❌ Ошибка установки webhook:', error);
-    }
-}
-
-// Инициализация при запуске
-async function initialize() {
-    const dbConnected = await connectToDb();
-    if (!dbConnected) {
-        logger.error('❌ Cannot start bot without database connection');
-        process.exit(1);
-    }
-
-    if (WEBHOOK_URL) {
-        await setWebhook();
-    } else {
-        logger.info('📱 Starting in polling mode - no webhook setup needed');
-    }
-
-    logger.success('🎉 Bot successfully initialized and ready!');
-}
-
-// Health check endpoints
-app.get('/', (req, res) => {
-    res.json({
-        status: 'OK',
-        message: 'ANNUR DIAMONDS Bot v2.0',
-        version: '2.0.0',
-        features: [
-            'Referral System (3% from profit)',
-            'Promo Codes with Admin Control',
-            'Advanced Logging & Analytics',
-            'Data Validation & Security',
-            'Modular Architecture'
-        ],
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString()
-    });
-});
-
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'healthy',
-        uptime: process.uptime(),
-        version: '2.0.0',
-        database: db ? 'connected' : 'disconnected'
-    });
-});
-
-// Webhook для CryptoCloud платежей
-app.post('/webhook', async (req, res) => {
-    try {
-        const data = req.body;
-        logger.info('💰 CryptoCloud webhook received', { amount: data.amount, status: data.status });
-
-        if (data.status === 'success') {
-            const payload = JSON.parse(data.payload || '{}');
-            const userId = payload.chatId;
-
-            await processSuccessfulPayment(userId, data.amount, data.currency, payload);
-        }
-
-        res.sendStatus(200);
-    } catch (e) {
-        logger.error('❌ Webhook error:', e);
-        res.sendStatus(500);
-    }
-});
-
-// Обработка успешной оплаты
-async function processSuccessfulPayment(userId, amount, currency, payload) {
-    try {
-        const usersCollection = db.collection('users');
-        const user = await usersCollection.findOne({ chatId: userId });
-        let purchases = user ? user.purchases : 0;
-        purchases++;
-
-        // Обновляем информацию о пользователе
-        await usersCollection.updateOne(
-            { chatId: userId },
-            {
-                $set: {
-                    purchases: purchases,
-                    lastPurchase: new Date(),
-                    totalSpent: (user?.totalSpent || 0) + parseFloat(amount)
-                }
-            },
-            { upsert: true }
-        );
-
-        // Обрабатываем реферальный бонус
-        const referralResult = await referralService.processReferralBonus(userId, parseFloat(amount), currency);
-
-        // Подтверждаем использование промокода, если был
-        if (payload.promoCode) {
-            await promoService.confirmPromoUsage(userId, payload.promoCode, payload.discount || 0, parseFloat(amount));
-        }
-
-        // Отправляем сообщения пользователю
-        let successMessage = '✅ *Ваша оплата подтверждена!* Мы пополним ваш аккаунт в ближайшее время. Спасибо за покупку!';
-
-        if (payload.promoCode) {
-            successMessage += `\n\n🎫 Промокод ${payload.promoCode} использован!`;
-        }
-
-        await bot.sendMessage(userId, successMessage, { parse_mode: 'Markdown' });
-
-        // Проверяем бонус за количество покупок
-        if (purchases % 5 === 0) {
-            const bonusAmount = LOYALTY_LEVELS[Math.min(purchases, 50)]?.bonus || 50;
-            await bot.sendMessage(userId, `🎉 *Поздравляем!* 🎉 Вы совершили ${purchases} покупок и получаете бонус — *${bonusAmount} бонусных алмазов!*`, { parse_mode: 'Markdown' });
-        }
-
-        // Уведомляем о реферальном бонусе
-        if (referralResult.success) {
-            await bot.sendMessage(referralResult.referrerId,
-                `💰 *Реферальный бонус!*\n\nВаш приглашенный друг совершил покупку!\n` +
-                `Вы получили: *${referralResult.bonus} бонусных алмазов* 💎`,
-                { parse_mode: 'Markdown' }
-            );
-        }
-
-        // Сообщение админу
-        let adminMessage = `✅ *Новая оплата через CryptoCloud!*\n` +
-            `Пользователь: ${payload.username}\n` +
-            `Сумма: ${amount} ${currency}\n` +
-            `Покупок: ${purchases}`;
-
-        if (payload.promoCode) {
-            adminMessage += `\n🎫 Промокод: ${payload.promoCode}`;
-        }
-
-        if (referralResult.success) {
-            adminMessage += `\n💰 Реферальный бонус: ${referralResult.bonus}`;
-        }
-
-        await bot.sendMessage(adminChatId, adminMessage, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [{ text: '✅ Заказ выполнен', callback_data: `complete_order_${userId}` }]
-                ]
-            }
+        await bot.editMessageText(text, {
+            chat_id: chatId,
+            message_id: messageId,
+            ...options
         });
-
-        // Логируем финансовую операцию
-        logger.financial('order', parseFloat(amount), currency, userId, payload);
-
     } catch (error) {
-        logger.error('❌ Error processing successful payment', error);
+        if (error.code !== 'ETELEGRAM' || !error.response || error.response.body.error_code !== 400) {
+            logger.error('Error editing message:', error);
+        }
     }
 }
 
-// Webhook для Telegram
-app.post('/webhook_telegram', (req, res) => {
+async function deleteMessage(chatId, messageId) {
     try {
-        logger.info('📨 Telegram update received');
-        bot.processUpdate(req.body);
-        res.sendStatus(200);
-    } catch (e) {
-        logger.error('❌ processUpdate error:', e);
-        res.sendStatus(500);
-    }
-});
-
-// Endpoint для установки webhook
-app.get('/set-webhook', async (req, res) => {
-    try {
-        await setWebhook();
-        res.json({ success: true, message: 'Webhook установлен' });
+        await bot.deleteMessage(chatId, messageId);
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        logger.error('Error deleting message:', error);
     }
-});
+}
 
-// Функции интерфейса
+// Главное меню
 async function showMainMenu(chatId, messageId = null) {
+    const welcomeText =
+        '💎 *ANNUR DIAMONDS*\n\n' +
+        '🎮 *Mobile Legends: Bang Bang*\n' +
+        '⚡ Быстрое пополнение алмазов\n' +
+        '🔒 Безопасные платежи\n' +
+        '🎁 Бонусы и промокоды\n\n' +
+        '👥 *Рефералы* - приглашайте друзей\n' +
+        '📊 *История* - отслеживайте покупки';
+
+    const keyboard = [
+        [{ text: '💎 Купить алмазы', callback_data: 'buy_diamonds' }],
+        [
+            { text: '👥 Рефералы', callback_data: 'referral_menu' },
+            { text: '🎫 Промокод', callback_data: 'promo_menu' }
+        ],
+        [{ text: '📊 История покупок', callback_data: 'purchase_history' }],
+        [
+            { text: '📞 Поддержка', callback_data: 'support' },
+            { text: '💖 Отзывы', callback_data: 'reviews' }
+        ]
+    ];
+
+    const options = {
+        parse_mode: 'Markdown',
+        reply_markup: { inline_keyboard: keyboard }
+    };
+
     try {
-        const menuText =
-            '💎 *ANNUR DIAMONDS v2.0* 💎\n\n' +
-            '• Пополнение алмазов для Mobile Legends: Bang Bang\n\n' +
-            '• *Способы оплаты:*\n' +
-            '• *Россия:* банковские переводы, криптовалюта\n' +
-            '• *Кыргызстан:* O! Деньги, Balance.kg\n\n' +
-            '⚡ Быстрое пополнение за 5-15 минут!\n\n' +
-            '🎁 *Новинки:*\n' +
-            '• 👥 Реферальная программа - зарабатывайте с друзей!\n' +
-            '• 🎫 Промокоды и скидки\n' +
-            '• 📊 Улучшенная система лояльности';
+        if (messageId) {
+            await safeEditMessage(chatId, messageId, welcomeText, options);
+        } else {
+            await bot.sendMessage(chatId, welcomeText, options);
+        }
+    } catch (error) {
+        logger.error('Error showing main menu:', error);
+    }
+}
+
+// Меню рефералов
+async function showReferralMenu(chatId, messageId = null) {
+    try {
+        if (!referralService) {
+            await bot.sendMessage(chatId, '❌ Сервис рефералов недоступен');
+            return;
+        }
+
+        let stats = await referralService.getReferralStats(chatId);
+        if (!stats) {
+            await referralService.createReferralCode(chatId);
+            stats = await referralService.getReferralStats(chatId);
+        }
+
+        const referralText =
+            `👥 *Реферальная программа*\n\n` +
+            `🔗 *Ваш код:* \`${stats.referralCode}\`\n` +
+            `💰 *Ваш бонус:* ${stats.currentBonus} алмазов\n` +
+            `👨‍👩‍👧‍👦 *Приглашено:* ${stats.referralsCount} друзей\n` +
+            `📈 *Заработано:* ${stats.totalEarned} алмазов\n\n` +
+            `🎁 *Условия:*\n` +
+            `• Друг получает скидку 5%\n` +
+            `• Вы получаете 3% с покупки\n` +
+            `• Бонусы начисляются мгновенно`;
 
         const keyboard = [
-            [
-                { text: '💎 Купить алмазы', callback_data: 'buy_diamonds' },
-                { text: '📊 История покупок', callback_data: 'purchase_history' }
-            ],
-            [
-                { text: '👥 Рефералы', callback_data: 'referral_menu' },
-                { text: '🎫 Промокод', callback_data: 'promo_menu' }
-            ],
-            [
-                { text: '💖 Отзывы', callback_data: 'reviews' },
-                { text: '📞 Поддержка', callback_data: 'support' }
-            ]
+            [{ text: '📤 Поделиться ссылкой', callback_data: 'share_referral' }],
+            [{ text: '🔙 Главное меню', callback_data: 'back_to_start' }]
         ];
 
         const options = {
@@ -295,143 +179,158 @@ async function showMainMenu(chatId, messageId = null) {
         };
 
         if (messageId) {
-            await safeEditMessage(chatId, messageId, menuText, options);
+            await safeEditMessage(chatId, messageId, referralText, options);
         } else {
-            await bot.sendMessage(chatId, menuText, options);
+            await bot.sendMessage(chatId, referralText, options);
         }
 
-        logger.userAction(chatId, 'main_menu_viewed');
+        logger.userAction(chatId, 'referral_menu_viewed');
 
     } catch (error) {
-        logger.error('❌ Error showing main menu', error);
-        await bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуйте команду /start');
+        logger.error('Error showing referral menu:', error);
+        await bot.sendMessage(chatId, '❌ Ошибка загрузки реферальной программы');
     }
 }
 
-// Безопасное редактирование сообщений
-async function safeEditMessage(chatId, messageId, text, options) {
+// Меню промокодов
+async function showPromoMenu(chatId, messageId = null) {
     try {
-        await bot.editMessageText(text, {
-            chat_id: chatId,
-            message_id: messageId,
-            ...options
-        });
-    } catch (error) {
-        // Fallback: удаляем старое и создаем новое сообщение
-        try {
-            await bot.deleteMessage(chatId, messageId);
-        } catch (delError) {
-            // Игнорируем ошибки удаления
+        if (!promoService) {
+            await bot.sendMessage(chatId, '❌ Сервис промокодов недоступен');
+            return;
         }
-        await bot.sendMessage(chatId, text, options);
-    }
-}
 
-// Команды бота
-bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
-    const chatId = msg.chat.id;
-    const referralCode = match ? match[1] : null;
+        // Создаем приветственный промокод для нового пользователя
+        const usersCollection = db.collection('users');
+        const user = await usersCollection.findOne({ chatId: chatId });
 
-    logger.userAction(chatId, 'bot_started', { referralCode });
+        let promoText = `🎫 *Промокоды*\n\n`;
 
-    try {
-        // Если есть реферальный код, активируем его
-        if (referralCode && referralService) {
-            const result = await referralService.activateReferral(referralCode, chatId);
-            if (result.success) {
-                await bot.sendMessage(chatId,
-                    `🎉 *Добро пожаловать!*\n\n` +
-                    `Вы приглашены пользователем ${result.referrerName}!\n` +
-                    `Получите скидку 5% на первый заказ! 💎`,
-                    { parse_mode: 'Markdown' }
-                );
+        if (!user || user.purchases === 0) {
+            const welcomePromo = await promoService.createWelcomePromo(chatId);
+            if (welcomePromo) {
+                promoText += `🎁 *Приветственный промокод для новичков:*\n`;
+                promoText += `\`${welcomePromo.code}\` - скидка ${welcomePromo.discount}%\n\n`;
             }
         }
 
-        await showMainMenu(chatId);
+        promoText += `💡 *Как использовать:*\n`;
+        promoText += `• Введите промокод при оформлении заказа\n`;
+        promoText += `• Скидка применится автоматически\n`;
+        promoText += `• Промокоды одноразовые\n\n`;
+        promoText += `🔍 *Следите за новыми промокодами в нашем канале!*`;
+
+        const keyboard = [
+            [{ text: '🔙 Главное меню', callback_data: 'back_to_start' }]
+        ];
+
+        const options = {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+        };
+
+        if (messageId) {
+            await safeEditMessage(chatId, messageId, promoText, options);
+        } else {
+            await bot.sendMessage(chatId, promoText, options);
+        }
+
+        logger.userAction(chatId, 'promo_menu_viewed');
+
     } catch (error) {
-        logger.error('❌ Error in start command', error);
-        await bot.sendMessage(chatId, '❌ Произошла ошибка при запуске бота. Попробуйте еще раз.');
+        logger.error('Error showing promo menu:', error);
+        await bot.sendMessage(chatId, '❌ Ошибка загрузки промокодов');
     }
-});
+}
 
-// Команды через обработчики (если сервисы готовы)
-bot.onText(/\/history/, (msg) => {
-    if (botHandlers) {
-        botHandlers.handleHistory(msg);
-    } else {
-        bot.sendMessage(msg.chat.id, '⏳ Сервисы бота еще инициализируются. Попробуйте через несколько секунд.');
-    }
-});
-
-bot.onText(/\/mybonus/, (msg) => {
-    if (botHandlers) {
-        botHandlers.handleMyBonus(msg);
-    } else {
-        bot.sendMessage(msg.chat.id, '⏳ Сервисы бота еще инициализируются. Попробуйте через несколько секунд.');
-    }
-});
-
-bot.onText(/\/stats/, (msg) => {
-    if (botHandlers) {
-        botHandlers.handleStats(msg);
-    } else {
-        bot.sendMessage(msg.chat.id, '⏳ Сервисы бота еще инициализируются. Попробуйте через несколько секунд.');
-    }
-});
-
-bot.onText(/\/createpromo/, (msg) => {
-    if (botHandlers) {
-        botHandlers.handleCreatePromo(msg);
-    } else {
-        bot.sendMessage(msg.chat.id, '⏳ Сервисы бота еще инициализируются. Попробуйте через несколько секунд.');
-    }
-});
-
-// Обработка обычных сообщений
-bot.on('message', (msg) => {
-    if (botHandlers) {
-        botHandlers.handleMessage(msg);
-    }
-});
-
-// Базовые обработчики callback_query (упрощенная версия)
-bot.on('callback_query', async (q) => {
-    const chatId = q.message.chat.id;
-    const messageId = q.message.message_id;
-
+// История покупок
+async function showPurchaseHistory(chatId) {
     try {
-        await bot.answerCallbackQuery(q.id);
-
-        // Основные команды меню
-        if (q.data === 'buy_diamonds') {
-            await showRegionMenu(chatId, messageId);
-        } else if (q.data === 'back_to_start') {
-            await showMainMenu(chatId, messageId);
-        } else if (q.data === 'support') {
-            await bot.sendMessage(chatId, '📞 *Поддержка*\n\nПо всем вопросам обращайтесь к администратору: @annur_admin', { parse_mode: 'Markdown' });
-        } else if (q.data === 'reviews') {
-            await bot.sendMessage(chatId, '💖 Отзывы наших клиентов: https://t.me/annurreviews');
+        if (!db) {
+            await bot.sendMessage(chatId, '❌ База данных недоступна');
+            return;
         }
-        // Остальные обработчики будут подключены после полной инициализации
 
-    } catch (e) {
-        logger.error('❌ Callback error:', e);
-        try {
-            await bot.answerCallbackQuery(q.id, { text: 'Произошла ошибка. Попробуйте еще раз.' });
-        } catch (answerError) {
-            logger.error('❌ Error answering callback:', answerError);
+        const usersCollection = db.collection('users');
+        const user = await usersCollection.findOne({ chatId: chatId });
+        const purchases = user ? user.purchases : 0;
+        const totalSpent = user ? user.totalSpent : 0;
+        const lastPurchase = user ? user.lastPurchase : null;
+
+        // Получаем реферальную статистику
+        let referralStats = null;
+        if (referralService) {
+            try {
+                referralStats = await referralService.getReferralStats(chatId);
+            } catch (error) {
+                logger.error('Error getting referral stats', error);
+            }
         }
+
+        let historyText = `📊 *История покупок*\n\n`;
+        historyText += `👤 *Покупки:* ${purchases}\n`;
+        historyText += `💰 *Потрачено:* ${totalSpent.toFixed(2)}\n`;
+
+        if (referralStats) {
+            historyText += `💎 *Реферальные бонусы:* ${referralStats.currentBonus}\n`;
+        }
+
+        if (purchases === 0) {
+            historyText += `💎 *Статус:* Новый клиент\n\n`;
+            historyText += `🌟 Совершите покупку и получите бонусы!\n`;
+        } else {
+            const untilBonus = 5 - (purchases % 5);
+            const bonusesReceived = Math.floor(purchases / 5);
+
+            historyText += `🎁 *Бонусов получено:* ${bonusesReceived}\n`;
+            if (untilBonus === 5) {
+                historyText += `✨ *Готов к получению бонуса!*\n`;
+            } else {
+                historyText += `⏳ *До бонуса:* ${untilBonus} покупок\n`;
+            }
+
+            if (lastPurchase) {
+                historyText += `📅 *Последняя покупка:* ${lastPurchase.toLocaleDateString('ru-RU')}\n`;
+            }
+        }
+
+        // Уровень лояльности
+        let loyaltyLevel = '';
+        if (purchases >= 50) loyaltyLevel = '👑 Легенда';
+        else if (purchases >= 20) loyaltyLevel = '💎 VIP клиент';
+        else if (purchases >= 10) loyaltyLevel = '⭐ Постоянный клиент';
+        else if (purchases >= 5) loyaltyLevel = '🔥 Активный покупатель';
+        else if (purchases >= 1) loyaltyLevel = '🌱 Новичок';
+        else loyaltyLevel = '👋 Гость';
+
+        historyText += `\n${loyaltyLevel}`;
+
+        const keyboard = [
+            [{ text: '💎 Купить алмазы', callback_data: 'buy_diamonds' }],
+            [{ text: '👥 Рефералы', callback_data: 'referral_menu' }],
+            [{ text: '🔙 Главное меню', callback_data: 'back_to_start' }]
+        ];
+
+        await bot.sendMessage(chatId, historyText, {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+        });
+
+        logger.userAction(chatId, 'purchase_history_viewed');
+
+    } catch (error) {
+        logger.error('Error showing purchase history:', error);
+        await bot.sendMessage(chatId, '❌ Ошибка получения истории покупок');
     }
-});
+}
 
-// Функция показа регионов (упрощенная)
+// Меню регионов
 async function showRegionMenu(chatId, messageId = null) {
     const regionText =
         '🌍 *Выберите ваш регион*\n\n' +
-        '🇷🇺 *Россия* - переводы, криптовалюта\n' +
+        '🇷🇺 *Россия* - карты, криптовалюта\n' +
         '🇰🇬 *Кыргызстан* - O! Деньги, Balance.kg\n\n' +
-        '💡 От региона зависят доступные способы оплаты и цены';
+        '💡 От региона зависят способы оплаты и цены';
 
     const keyboard = [
         [
@@ -453,15 +352,163 @@ async function showRegionMenu(chatId, messageId = null) {
             await bot.sendMessage(chatId, regionText, options);
         }
     } catch (error) {
-        logger.error('❌ Error showing region menu', error);
+        logger.error('Error showing region menu:', error);
     }
+}
+
+// Меню алмазов
+async function showDiamondsMenu(chatId, messageId = null) {
+    try {
+        const currency = selectedRegion === 'RU' ? '₽' : 'KGS';
+        const diamondsData = selectedRegion === 'RU' ? DIAMONDS_DATA_RU : DIAMONDS_DATA_KG;
+        const keyboard = [];
+        let currentRow = [];
+
+        diamondsData.forEach((d, index) => {
+            const amountText = typeof d.amount === 'number' ? `${d.amount}💎` : d.amount;
+
+            currentRow.push({
+                text: `${amountText} — ${d.price.toLocaleString('ru-RU')} ${currency}`,
+                callback_data: `diamond_${index}`
+            });
+
+            if (currentRow.length === 2 || index === diamondsData.length - 1) {
+                keyboard.push(currentRow);
+                currentRow = [];
+            }
+        });
+
+        keyboard.push([{ text: '🔙 К выбору региона', callback_data: 'back_to_regions' }]);
+
+        const menuText =
+            `💎 *Выберите пакет алмазов*\n\n` +
+            `📍 *Регион:* ${selectedRegion === 'RU' ? '🇷🇺 Россия' : '🇰🇬 Кыргызстан'}\n` +
+            `💰 *Валюта:* ${currency}\n\n` +
+            `💡 *Подсказка:* Используйте промокоды для скидки!`;
+
+        const options = {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+        };
+
+        if (messageId) {
+            await safeEditMessage(chatId, messageId, menuText, options);
+        } else {
+            await bot.sendMessage(chatId, menuText, options);
+        }
+
+        logger.userAction(chatId, 'diamonds_menu_viewed', { region: selectedRegion });
+
+    } catch (error) {
+        logger.error('Error showing diamonds menu', error);
+        await bot.sendMessage(chatId, '❌ Ошибка загрузки каталога алмазов');
+    }
+}
+
+// Обработчики команд
+bot.onText(/\/start(.*)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+    const referralCode = match[1] ? match[1].trim() : null;
+
+    logger.userAction(chatId, 'bot_started', { referralCode });
+
+    if (referralCode && referralService) {
+        try {
+            const success = await referralService.activateReferral(chatId, referralCode);
+            if (success) {
+                await bot.sendMessage(chatId, '🎉 Вы успешно активировали реферальный код! Скидка 5% на первую покупку!');
+            }
+        } catch (error) {
+            logger.error('Error activating referral:', error);
+        }
+    }
+
+    await showMainMenu(chatId);
+});
+
+// Обработчик callback запросов
+bot.on('callback_query', async (q) => {
+    const chatId = q.message.chat.id;
+    const messageId = q.message.message_id;
+
+    try {
+        await bot.answerCallbackQuery(q.id);
+
+        // Основные команды меню
+        if (q.data === 'buy_diamonds') {
+            await showRegionMenu(chatId, messageId);
+        } else if (q.data === 'referral_menu') {
+            await showReferralMenu(chatId, messageId);
+        } else if (q.data === 'promo_menu') {
+            await showPromoMenu(chatId, messageId);
+        } else if (q.data === 'purchase_history') {
+            await deleteMessage(chatId, messageId);
+            await showPurchaseHistory(chatId);
+        } else if (q.data === 'share_referral') {
+            if (referralService) {
+                const stats = await referralService.getReferralStats(chatId);
+                if (stats?.referralCode) {
+                    const shareText = `🎁 Получите скидку 5% на алмазы MLBB!\n\nПрисоединяйтесь по моей ссылке: t.me/your_bot?start=${stats.referralCode}`;
+                    await bot.sendMessage(chatId, shareText);
+                }
+            }
+        } else if (q.data === 'back_to_start') {
+            await showMainMenu(chatId, messageId);
+        } else if (q.data === 'support') {
+            await bot.sendMessage(chatId, '📞 *Поддержка*\n\nПо всем вопросам обращайтесь: @annur_admin', { parse_mode: 'Markdown' });
+        } else if (q.data === 'reviews') {
+            await bot.sendMessage(chatId, '💖 Отзывы наших клиентов: https://t.me/annurreviews');
+        } else if (q.data.startsWith('region_')) {
+            const region = q.data.split('_')[1].toUpperCase();
+            selectedRegion = region;
+            await showDiamondsMenu(chatId, messageId);
+        } else if (q.data === 'back_to_regions') {
+            await showRegionMenu(chatId, messageId);
+        } else if (q.data.startsWith('diamond_')) {
+            // Здесь будет обработка выбора алмазов
+            await bot.sendMessage(chatId, 'Обработка покупки будет добавлена в следующей версии');
+        }
+
+    } catch (error) {
+        logger.error('Error handling callback query:', error);
+        await bot.sendMessage(chatId, '❌ Произошла ошибка. Попробуйте еще раз.');
+    }
+});
+
+// Дополнительные команды из BotHandlers
+if (botHandlers) {
+    bot.onText(/\/stats/, (msg) => botHandlers.handleStats(msg));
+    bot.onText(/\/createpromo (.+)/, (msg, match) => botHandlers.handleCreatePromo(msg, match));
+    bot.onText(/\/history/, (msg) => botHandlers.handleHistory(msg));
+    bot.onText(/\/mybonus/, (msg) => botHandlers.handleMyBonus(msg));
+}
+
+// Express сервер
+app.get('/', (req, res) => {
+    res.json({
+        status: 'ANNUR DIAMONDS Bot v2.0 активен',
+        timestamp: new Date().toISOString(),
+        version: '2.0.0',
+        features: ['referrals', 'promo-codes', 'analytics']
+    });
+});
+
+app.get('/health', (req, res) => {
+    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+if (WEBHOOK_URL) {
+    app.post(`/bot${TOKEN}`, (req, res) => {
+        bot.processUpdate(req.body);
+        res.sendStatus(200);
+    });
 }
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
     logger.info('🔄 Получен сигнал SIGTERM. Завершение работы...');
     try {
-        await client.close();
+        if (client) await client.close();
         logger.info('✅ Database connection closed');
     } catch (error) {
         logger.error('❌ Error closing database:', error);
@@ -472,7 +519,7 @@ process.on('SIGTERM', async () => {
 process.on('SIGINT', async () => {
     logger.info('🔄 Получен сигнал SIGINT. Завершение работы...');
     try {
-        await client.close();
+        if (client) await client.close();
         logger.info('✅ Database connection closed');
     } catch (error) {
         logger.error('❌ Error closing database:', error);
@@ -480,24 +527,29 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
-// Обработка необработанных ошибок
-process.on('unhandledRejection', (reason, promise) => {
-    logger.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
-});
+// Запуск приложения
+async function startBot() {
+    try {
+        const dbConnected = await connectToDatabase();
+        if (!dbConnected) {
+            logger.error('❌ Не удалось подключиться к базе данных');
+            process.exit(1);
+        }
 
-process.on('uncaughtException', (error) => {
-    logger.error('❌ Uncaught Exception:', error);
-    process.exit(1);
-});
+        if (WEBHOOK_URL) {
+            await bot.setWebHook(`${WEBHOOK_URL}/bot${TOKEN}`);
+            logger.info(`🔗 Webhook установлен: ${WEBHOOK_URL}/bot${TOKEN}`);
+        }
 
-// Запуск сервера
-const server = app.listen(PORT, '0.0.0.0', async () => {
-    logger.success(`🚀 Server running on port ${PORT}`);
-    logger.info(`📍 Webhook URL: ${WEBHOOK_URL || 'Not using webhooks (polling mode)'}`);
+        app.listen(PORT, () => {
+            logger.info(`🚀 Bot server запущен на порту ${PORT}`);
+            logger.info('✅ ANNUR DIAMONDS Bot v2.0 готов к работе!');
+        });
 
-    // Инициализируем бот после запуска сервера
-    await initialize();
-});
+    } catch (error) {
+        logger.error('❌ Ошибка запуска бота:', error);
+        process.exit(1);
+    }
+}
 
-// Экспорт для тестирования
-module.exports = { app, bot, db, server };
+startBot();
