@@ -192,7 +192,7 @@ async function showMainMenu(chatId, messageId = null) {
             { text: '📊 История покупок', callback_data: 'purchase_history' }
         ],
         [
-            { text: '💖 Отзывы', callback_data: 'reviews' },
+            { text: '💖 Отзывы', callback_data: 'https://t.me/annurreviews' },
             { text: '📞 Поддержка', callback_data: 'support' }
         ]
     ];
