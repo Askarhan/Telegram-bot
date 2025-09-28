@@ -91,6 +91,11 @@ async function connectToDatabase() {
 }
 
 // Вспомогательные функции
+function escapeMarkdown(text) {
+    // Экранируем специальные символы Markdown
+    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+}
+
 async function safeEditMessage(chatId, messageId, text, options = {}) {
     try {
         await bot.editMessageText(text, {
@@ -174,8 +179,8 @@ async function showReferralMenu(chatId, messageId = null) {
             `👨‍👩‍👧‍👦 *Приглашено:* ${stats.referralsCount} друзей\n` +
             `📈 *Заработано:* ${stats.totalEarned} алмазов\n\n` +
             `🎁 *Условия:*\n` +
-            `• Друг получает скидку 5%\n` +
-            `• Вы получаете 3% с покупки\n` +
+            `• Друг получает скидку 5\\%\n` +
+            `• Вы получаете 3\\% с покупки\n` +
             `• Бонусы начисляются мгновенно`;
 
         const keyboard = [
@@ -291,14 +296,14 @@ async function showPurchaseHistory(chatId) {
 
         if (purchases === 0) {
             historyText += `💎 *Статус:* Новый клиент\n\n`;
-            historyText += `🌟 Совершите покупку и получите бонусы!\n`;
+            historyText += `🌟 Совершите покупку и получите бонусы\\!\n`;
         } else {
             const untilBonus = 5 - (purchases % 5);
             const bonusesReceived = Math.floor(purchases / 5);
 
             historyText += `🎁 *Бонусов получено:* ${bonusesReceived}\n`;
             if (untilBonus === 5) {
-                historyText += `✨ *Готов к получению бонуса!*\n`;
+                historyText += `✨ *Готов к получению бонуса\\!*\n`;
             } else {
                 historyText += `⏳ *До бонуса:* ${untilBonus} покупок\n`;
             }
@@ -484,7 +489,7 @@ bot.on('callback_query', async (q) => {
         } else if (q.data === 'back_to_start') {
             await showMainMenu(chatId, messageId);
         } else if (q.data === 'support') {
-            await bot.sendMessage(chatId, '📞 *Поддержка*\n\nПо всем вопросам обращайтесь к администратору: @annur_admin', { parse_mode: 'Markdown' });
+            await bot.sendMessage(chatId, '📞 *Поддержка*\n\nПо всем вопросам обращайтесь к администратору: @annur\\_admin', { parse_mode: 'Markdown' });
         } else if (q.data.startsWith('region_')) {
             const region = q.data.split('_')[1].toUpperCase();
             selectedRegion = region;
