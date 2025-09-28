@@ -359,7 +359,7 @@ async function showPurchaseHistory(chatId) {
 async function showRegionMenu(chatId, messageId = null) {
     const regionText =
         '🌍 *Выберите ваш регион*\n\n' +
-        '🇷🇺 *Россия* - карты, криптовалюта\n' +
+        '🇷🇺 *Россия* - переводы, криптовалюта\n' +
         '🇰🇬 *Кыргызстан* - O! Деньги, Balance.kg\n\n' +
         '💡 От региона зависят способы оплаты и цены';
 
@@ -460,11 +460,12 @@ async function showOrderForm(chatId, messageId, diamondIndex) {
             `💰 *Цена:* ${selectedDiamond.price.toLocaleString('ru-RU')} ${currency}\n` +
             `🌍 *Регион:* ${selectedRegion === 'RU' ? '🇷🇺 Россия' : '🇰🇬 Кыргызстан'}\n\n` +
             `📝 *Для завершения заказа введите:*\n` +
-            `• ID игрока (цифры)\n` +
-            `• Server ID (цифры)\n` +
+            `• ID игрока (цифры, скобки, пробелы)\n` +
+            `• Server ID (цифры, скобки, пробелы)\n` +
             `• Промокод (опционально)\n\n` +
             `*Формат:* \`ID SERVER ПРОМОКОД\`\n` +
-            `*Пример:* \`123456789 1234 WELCOME10\`\n\n` +
+            `*Примеры:* \`123456789 1234 WELCOME10\`\n` +
+            `\`1121312 (2312) PROMO5\`\n\n` +
             `💡 Промокод можно не указывать`;
 
         const keyboard = [
@@ -536,12 +537,12 @@ async function processOrderInput(chatId, text) {
         const serverId = parts[1];
         const promoCode = parts[2] || null;
 
-        // Валидация ID
-        if (!/^\d+$/.test(playerId) || !/^\d+$/.test(serverId)) {
+        // Валидация ID (разрешаем цифры, скобки и пробелы)
+        if (!/^[\d\s\(\)]+$/.test(playerId) || !/^[\d\s\(\)]+$/.test(serverId)) {
             await bot.sendMessage(chatId,
-                '❌ *ID должны содержать только цифры\\!*\n\n' +
-                'Player ID и Server ID должны быть числами\\.\n' +
-                '*Пример:* `123456789 1234`',
+                '❌ *ID должны содержать только цифры, скобки и пробелы\\!*\n\n' +
+                'Player ID и Server ID могут содержать цифры, скобки \\(\\) и пробелы\\.\n' +
+                '*Примеры:* `123456789 1234` или `1121312 (2312)`',
                 { parse_mode: 'Markdown' }
             );
             return;
@@ -624,9 +625,9 @@ async function createPaymentOrder(chatId, orderData) {
         let keyboard = [];
 
         if (orderData.region === 'RU') {
-            // Россия: карты, криптовалюта
+            // Россия: перевод, криптовалюта
             keyboard = [
-                [{ text: '💳 Банковская карта', callback_data: `pay_card_${orderId}` }],
+                [{ text: '💰 Перевод (Компаньон)', callback_data: `pay_transfer_${orderId}` }],
                 [{ text: '₿ Криптовалюта', callback_data: `pay_crypto_${orderId}` }],
                 [
                     { text: '❌ Отменить', callback_data: 'cancel_order' },
@@ -720,13 +721,13 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
         let keyboard = [];
 
         switch (paymentMethod) {
-            case 'card':
-                paymentText = `💳 *Оплата банковской картой*\n\n`;
+            case 'transfer':
+                paymentText = `💰 *Перевод через Компаньон Банк*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
                 paymentInstructions = `📝 *Инструкция:*\n`;
-                paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на карту:\n`;
-                paymentInstructions += `💳 \`4400 4301 2345 6789\` \\(Сбербанк\\)\n`;
+                paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер:\n`;
+                paymentInstructions += `📞 \`\\+996 707 711 770\` \\(Компаньон Банк\\)\n`;
                 paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
                 paymentInstructions += `3\\. Отправьте скриншот перевода админу\n\n`;
                 paymentInstructions += `⏰ Алмазы поступят в течение 5\\-15 минут`;
@@ -760,7 +761,7 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
                 paymentInstructions = `📝 *Инструкция:*\n`;
                 paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер:\n`;
-                paymentInstructions += `📞 \`\\+996 700 123 456\` \\(O\\! Деньги\\)\n`;
+                paymentInstructions += `📞 \`\\+996 707 711 770\` \\(O\\! Деньги\\)\n`;
                 paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
                 paymentInstructions += `3\\. Отправьте скриншот перевода админу\n\n`;
                 paymentInstructions += `⏰ Алмазы поступят в течение 5\\-15 минут`;
@@ -777,7 +778,7 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
                 paymentInstructions = `📝 *Инструкция:*\n`;
                 paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер:\n`;
-                paymentInstructions += `📞 \`\\+996 555 123 456\` \\(Balance\\.kg\\)\n`;
+                paymentInstructions += `📞 \`\\+996 221 577 629\` \\(Balance\\.kg\\)\n`;
                 paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
                 paymentInstructions += `3\\. Отправьте скриншот перевода админу\n\n`;
                 paymentInstructions += `⏰ Алмазы поступят в течение 5\\-15 минут`;
