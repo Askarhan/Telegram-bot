@@ -698,12 +698,17 @@ async function createPaymentOrder(chatId, orderData) {
 // Обработка выбора способа оплаты
 async function handlePaymentMethod(chatId, messageId, paymentData) {
     try {
+        console.log('🔍 handlePaymentMethod called:', { chatId, paymentData });
+
         const parts = paymentData.split('_');
-        const paymentMethod = parts[1]; // card, crypto, odengi, balance
+        const paymentMethod = parts[1]; // transfer, crypto, odengi, balance
         const orderId = parts.slice(2).join('_'); // ID заказа
+
+        console.log('📊 Parsed payment data:', { paymentMethod, orderId });
 
         // Получаем заказ из базы данных
         if (!db) {
+            console.log('❌ Database not available');
             await bot.sendMessage(chatId, '❌ База данных недоступна');
             return;
         }
@@ -711,10 +716,15 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
         const ordersCollection = db.collection('orders');
         const order = await ordersCollection.findOne({ orderId: orderId, chatId: chatId });
 
+        console.log('🔍 Order lookup result:', { found: !!order, orderId, chatId });
+
         if (!order) {
+            console.log('❌ Order not found in database');
             await bot.sendMessage(chatId, '❌ Заказ не найден');
             return;
         }
+
+        console.log('✅ Order found, processing payment method:', paymentMethod);
 
         let paymentText = '';
         let paymentInstructions = '';
@@ -1227,6 +1237,7 @@ bot.on('callback_query', async (q) => {
     const messageId = q.message.message_id;
 
     try {
+        console.log('🔍 Callback query received:', { chatId, data: q.data });
         await bot.answerCallbackQuery(q.id);
 
         // Основные команды меню
