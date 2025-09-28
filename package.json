@@ -2,11 +2,12 @@
   "name": "telegram-bot-shop",
   "version": "2.0.0",
   "description": "Advanced Telegram bot for diamond shop with referrals and promos",
-  "main": "index_improved.js",
+  "main": "index_complete.js",
   "scripts": {
-    "start": "node index_improved.js",
-    "dev": "nodemon index_improved.js",
+    "start": "node index_complete.js",
+    "dev": "nodemon index_complete.js",
     "old": "node index.js",
+    "v2": "node index_improved.js",
     "test": "echo \"Tests will be added soon\" && exit 0"
   },
   "keywords": [
