@@ -31,6 +31,7 @@ const MONGO_URI = process.env.MONGO_URI;
 const CRYPTOCLOUD_API_KEY = process.env.CRYPTOCLOUD_API_KEY;
 const CRYPTOCLOUD_SHOP_ID = process.env.CRYPTOCLOUD_SHOP_ID;
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID || '895583535'; // Chat ID администратора
 
 // Проверка обязательных переменных
 if (!TOKEN || !MONGO_URI || !CRYPTOCLOUD_API_KEY) {
@@ -137,7 +138,7 @@ async function showMainMenu(chatId, messageId = null) {
         ],
         [{ text: '📊 История покупок', callback_data: 'purchase_history' }],
         [
-            { text: '📞 Поддержка', callback_data: 'support' },
+            { text: '📞 Поддержка', url: `tg://user?id=${ADMIN_CHAT_ID}` },
             { text: '💖 Отзывы', url: 'https://t.me/annurreviews' }
         ]
     ];
@@ -488,8 +489,6 @@ bot.on('callback_query', async (q) => {
             }
         } else if (q.data === 'back_to_start') {
             await showMainMenu(chatId, messageId);
-        } else if (q.data === 'support') {
-            await bot.sendMessage(chatId, '📞 *Поддержка*\n\nПо всем вопросам обращайтесь к администратору: @annur\\_admin', { parse_mode: 'Markdown' });
         } else if (q.data.startsWith('region_')) {
             const region = q.data.split('_')[1].toUpperCase();
             selectedRegion = region;
