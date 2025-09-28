@@ -99,14 +99,19 @@ function escapeMarkdown(text) {
 
 async function safeEditMessage(chatId, messageId, text, options = {}) {
     try {
+        console.log('🔄 Attempting to edit message:', { chatId, messageId, textLength: text.length });
         await bot.editMessageText(text, {
             chat_id: chatId,
             message_id: messageId,
             ...options
         });
+        console.log('✅ Message edited successfully');
     } catch (error) {
+        console.log('❌ Error editing message:', error.message);
         if (error.code !== 'ETELEGRAM' || !error.response || error.response.body.error_code !== 400) {
-            logger.error('Error editing message:', error);
+            if (logger && logger.error) {
+                logger.error('Error editing message:', error);
+            }
         }
     }
 }
@@ -732,6 +737,7 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
 
         switch (paymentMethod) {
             case 'transfer':
+                console.log('💰 Processing transfer payment method');
                 paymentText = `💰 *Перевод через Компаньон Банк*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
@@ -750,6 +756,7 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 break;
 
             case 'crypto':
+                console.log('₿ Processing crypto payment method');
                 paymentText = `₿ *Оплата криптовалютой*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
@@ -768,6 +775,7 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 break;
 
             case 'odengi':
+                console.log('📱 Processing O! Деньги payment method');
                 paymentText = `📱 *Оплата через O! Деньги*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
@@ -786,6 +794,7 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 break;
 
             case 'balance':
+                console.log('💰 Processing Balance.kg payment method');
                 paymentText = `💰 *Оплата через Balance\\.kg*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
@@ -810,10 +819,15 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
 
         const fullText = paymentText + paymentInstructions;
 
+        console.log('📝 Sending payment instructions for method:', paymentMethod);
+        console.log('💬 Message length:', fullText.length);
+
         await safeEditMessage(chatId, messageId, fullText, {
             parse_mode: 'Markdown',
             reply_markup: { inline_keyboard: keyboard }
         });
+
+        console.log('✅ Payment instructions sent successfully');
 
         // Обновляем статус заказа
         await ordersCollection.updateOne(
