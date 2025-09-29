@@ -229,8 +229,8 @@ class ReferralService {
 
             return {
                 referralCode: user.referralCode,
-                referredCount,
-                totalEarnings,
+                referralsCount: referredCount,
+                totalEarned: totalEarnings,
                 currentBonus,
                 recentReferrals: recentReferrals.length
             };
