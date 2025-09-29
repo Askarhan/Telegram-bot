@@ -1,6 +1,7 @@
 // ANNUR DIAMONDS Telegram Bot v2.0
 // Модульная архитектура с реферальной системой и промокодами
 
+require('dotenv').config();
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const { MongoClient } = require('mongodb');
@@ -615,12 +616,12 @@ async function createPaymentOrder(chatId, orderData) {
         } else {
             confirmText += `💰 *Цена:* ${finalPrice} ${currency}\n\n`;
             if (orderData.promoCode) {
-                confirmText += `❌ Промокод "${orderData.promoCode}" недействителен\n\n`;
+                confirmText += `❌ Промокод \\"${orderData.promoCode}\\" недействителен\n\n`;
             }
         }
 
         confirmText += `💳 *Выберите способ оплаты:*\n`;
-        confirmText += `⏰ Время выполнения: 5-15 минут\n`;
+        confirmText += `⏰ Время выполнения: 5\\-15 минут\n`;
         confirmText += `✨ Автоматическое зачисление алмазов`;
 
         // Создаем уникальный ID заказа
@@ -729,7 +730,6 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
             return;
         }
 
-        console.log('✅ Order found, processing payment method:', paymentMethod);
 
         let paymentText = '';
         let paymentInstructions = '';
@@ -737,13 +737,12 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
 
         switch (paymentMethod) {
             case 'transfer':
-                console.log('💰 Processing transfer payment method');
                 paymentText = `💰 *Перевод через Компаньон Банк*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
                 paymentInstructions = `📝 *Инструкция:*\n`;
                 paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер:\n`;
-                paymentInstructions += `📞 \`\\+996 707 711 770\` \\(Компаньон Банк\\)\n`;
+                paymentInstructions += `📞 \`+996 707 711 770\` (Компаньон Банк)\n`;
                 paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
                 paymentInstructions += `3\\. Нажмите "Я оплатил" и отправьте скриншот\n\n`;
                 paymentInstructions += `⏰ Алмазы поступят после подтверждения админом`;
@@ -756,7 +755,6 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 break;
 
             case 'crypto':
-                console.log('₿ Processing crypto payment method');
                 paymentText = `₿ *Оплата криптовалютой*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
@@ -775,13 +773,12 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 break;
 
             case 'odengi':
-                console.log('📱 Processing O! Деньги payment method');
                 paymentText = `📱 *Оплата через O! Деньги*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
                 paymentInstructions = `📝 *Инструкция:*\n`;
                 paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер:\n`;
-                paymentInstructions += `📞 \`\\+996 707 711 770\` \\(O\\! Деньги\\)\n`;
+                paymentInstructions += `📞 \`+996 707 711 770\` (O! Деньги)\n`;
                 paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
                 paymentInstructions += `3\\. Нажмите "Я оплатил" и отправьте скриншот\n\n`;
                 paymentInstructions += `⏰ Алмазы поступят после подтверждения админом`;
@@ -794,13 +791,12 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 break;
 
             case 'balance':
-                console.log('💰 Processing Balance.kg payment method');
                 paymentText = `💰 *Оплата через Balance\\.kg*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
                 paymentInstructions = `📝 *Инструкция:*\n`;
                 paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер:\n`;
-                paymentInstructions += `📞 \`\\+996 221 577 629\` \\(Balance\\.kg\\)\n`;
+                paymentInstructions += `📞 \`+996 221 577 629\` (Balance.kg)\n`;
                 paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
                 paymentInstructions += `3\\. Нажмите "Я оплатил" и отправьте скриншот\n\n`;
                 paymentInstructions += `⏰ Алмазы поступят после подтверждения админом`;
