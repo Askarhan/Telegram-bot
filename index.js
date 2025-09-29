@@ -791,7 +791,7 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 break;
 
             case 'balance':
-                paymentText = `💰 *Оплата через Balance\\.kg*\n\n`;
+                paymentText = `💰 *Оплата через Balance.kg*\n\n`;
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
                 paymentInstructions = `📝 *Инструкция:*\n`;
