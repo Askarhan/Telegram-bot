@@ -754,7 +754,12 @@ async function createPaymentOrder(chatId, orderData) {
         if (orderData.isCoupon) {
             confirmText += `🎟️ *Купон:* ${orderData.promoCode}\n`;
             confirmText += `💰 *Цена:* ~~${orderData.diamond.price}~~ → *БЕСПЛАТНО* ✨\n`;
-            confirmText += `🎁 Оплачено реферальными бонусами\n\n`;
+            // Проверяем тип купона
+            if (orderData.couponData && orderData.couponData.type === 'referral_bonus') {
+                confirmText += `🎁 Оплачено реферальными бонусами\n\n`;
+            } else {
+                confirmText += `🎉 Купон активирован успешно!\n\n`;
+            }
         } else if (orderData.referralDiscount > 0) {
             confirmText += `🎁 *Реферальная скидка:* -${orderData.referralDiscount}%\n`;
             confirmText += `💰 *Цена:* ~~${orderData.diamond.price}~~ → *${finalPrice}* ${currency}\n`;
@@ -1797,6 +1802,72 @@ bot.onText(/\/createcoupon (\d+) (\S+)(?: (\d+))?/, async (msg, match) => {
             logger.error('Error creating admin coupon:', error);
         }
         await bot.sendMessage(chatId, '❌ Ошибка создания купонов');
+    }
+});
+
+// Команда создания промокода для админа
+bot.onText(/\/createpromo (\S+) (\d+)(?: (\d+))?(?: (\d+))?/, async (msg, match) => {
+    const chatId = msg.chat.id;
+
+    // Проверяем, что это админ
+    if (chatId.toString() !== ADMIN_CHAT_ID) {
+        await bot.sendMessage(chatId, '❌ Доступ запрещен');
+        return;
+    }
+
+    try {
+        const promoCode = match[1].toUpperCase();
+        const discount = parseInt(match[2]);
+        const maxUses = match[3] ? parseInt(match[3]) : 100;
+        const minOrderAmount = match[4] ? parseInt(match[4]) : 0;
+
+        if (!promoService || !db) {
+            await bot.sendMessage(chatId, '❌ Сервис недоступен');
+            return;
+        }
+
+        // Проверяем корректность скидки
+        if (discount < 1 || discount > 50) {
+            await bot.sendMessage(chatId, '❌ Скидка должна быть от 1% до 50%');
+            return;
+        }
+
+        // Создаем промокод через PromoService
+        const result = await promoService.createPromo(chatId, {
+            code: promoCode,
+            discount: discount,
+            type: 'percentage',
+            maxUses: maxUses,
+            minOrderAmount: minOrderAmount,
+            validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 дней
+            description: 'Создан администратором через команду'
+        });
+
+        if (!result.success) {
+            await bot.sendMessage(chatId, `❌ ${result.error}`);
+            return;
+        }
+
+        const confirmText =
+            `✅ *Промокод создан успешно!*\n\n` +
+            `🎫 *Код:* \`${promoCode}\`\n` +
+            `💰 *Скидка:* ${discount}%\n` +
+            `📦 *Максимум использований:* ${maxUses} раз\n` +
+            `💵 *Минимальная сумма заказа:* ${minOrderAmount > 0 ? minOrderAmount : 'нет ограничений'}\n` +
+            `⏰ *Действителен:* 30 дней\n\n` +
+            `Пользователи могут использовать промокод при оформлении заказа`;
+
+        await bot.sendMessage(chatId, confirmText, { parse_mode: 'Markdown' });
+
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'admin_promo_created', { code: promoCode, discount, maxUses, minOrderAmount });
+        }
+
+    } catch (error) {
+        if (logger && logger.error) {
+            logger.error('Error creating admin promo:', error);
+        }
+        await bot.sendMessage(chatId, '❌ Ошибка создания промокода');
     }
 });
 
