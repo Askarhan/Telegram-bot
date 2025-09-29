@@ -82,7 +82,6 @@ let selectedRegion = 'RU';
 async function connectToDatabase() {
     try {
         client = new MongoClient(MONGO_URI, {
-            useUnifiedTopology: true,
             serverSelectionTimeoutMS: 5000,
         });
         await client.connect();
