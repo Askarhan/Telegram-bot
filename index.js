@@ -16,6 +16,15 @@ const BotHandlers = require('./handlers/botHandlers');
 
 logger.info('🚀 Starting ANNUR DIAMONDS Bot v2.0');
 
+// 🔍 ДИАГНОСТИКА МОДУЛЕЙ
+console.log('🔍 Checking module imports:');
+console.log('DIAMONDS_DATA_RU loaded:', !!DIAMONDS_DATA_RU);
+console.log('logger loaded:', !!logger);
+console.log('Validators loaded:', !!Validators);
+console.log('ReferralService loaded:', !!ReferralService);
+console.log('PromoService loaded:', !!PromoService);
+console.log('BotHandlers loaded:', !!BotHandlers);
+
 console.log('🔍 Checking environment variables:');
 console.log('TOKEN exists:', !!process.env.TOKEN);
 console.log('MONGO_URI exists:', !!process.env.MONGO_URI);
@@ -703,14 +712,15 @@ async function createPaymentOrder(chatId, orderData) {
 
 // Обработка выбора способа оплаты
 async function handlePaymentMethod(chatId, messageId, paymentData) {
+    console.log('🔍 handlePaymentMethod called:', {
+        chatId,
+        paymentData
+    });
     try {
-        console.log('🔍 handlePaymentMethod called:', { chatId, paymentData });
-
         const parts = paymentData.split('_');
+        console.log('📊 Parsed payment data:', { paymentMethod: parts[1], orderId: parts.slice(2).join('_') });
         const paymentMethod = parts[1]; // transfer, crypto, odengi, balance
         const orderId = parts.slice(2).join('_'); // ID заказа
-
-        console.log('📊 Parsed payment data:', { paymentMethod, orderId });
 
         // Получаем заказ из базы данных
         if (!db) {
@@ -741,7 +751,7 @@ async function handlePaymentMethod(chatId, messageId, paymentData) {
                 paymentText += `💰 *К оплате:* ${order.finalPrice} ${order.currency}\n`;
                 paymentText += `🔗 *Заказ:* ${orderId}\n\n`;
                 paymentInstructions = `📝 *Инструкция:*\n`;
-                paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер:\n`;
+                paymentInstructions += `1\\. Переведите ${order.finalPrice} ${order.currency} на номер\n`;
                 paymentInstructions += `📞 \`+996 707 711 770\` (Компаньон Банк)\n`;
                 paymentInstructions += `2\\. В комментарии укажите: \`${orderId}\`\n`;
                 paymentInstructions += `3\\. Нажмите "Я оплатил" и отправьте скриншот\n\n`;
