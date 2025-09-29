@@ -1725,7 +1725,7 @@ bot.onText(/\/stats/, async (msg) => {
 });
 
 // Команда создания купона для админа
-bot.onText(/\/createcoupon (\d+) (\S+)/, async (msg, match) => {
+bot.onText(/\/createcoupon (\d+) (\S+)(?: (\d+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
 
     // Проверяем, что это админ
@@ -1737,9 +1737,16 @@ bot.onText(/\/createcoupon (\d+) (\S+)/, async (msg, match) => {
     try {
         const diamondAmount = parseInt(match[1]);
         const customCode = match[2];
+        const quantity = match[3] ? parseInt(match[3]) : 1;
 
         if (!db) {
             await bot.sendMessage(chatId, '❌ База данных недоступна');
+            return;
+        }
+
+        // Проверяем лимит
+        if (quantity > 1000) {
+            await bot.sendMessage(chatId, '❌ Максимум 1000 купонов за раз');
             return;
         }
 
@@ -1752,44 +1759,44 @@ bot.onText(/\/createcoupon (\d+) (\S+)/, async (msg, match) => {
             return;
         }
 
-        // Проверяем уникальность кода
         const couponsCollection = db.collection('coupons');
-        const existing = await couponsCollection.findOne({ code: customCode });
 
-        if (existing) {
-            await bot.sendMessage(chatId, `❌ Купон с кодом "${customCode}" уже существует`);
-            return;
+        // Создаем купоны
+        const coupons = [];
+        for (let i = 0; i < quantity; i++) {
+            coupons.push({
+                code: customCode,
+                userId: null,
+                diamondAmount: diamondAmount,
+                type: 'admin_created',
+                used: false,
+                maxUses: quantity, // Количество использований
+                createdAt: new Date(),
+                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+            });
         }
 
-        // Создаем купон
-        await couponsCollection.insertOne({
-            code: customCode,
-            userId: null, // Админский купон - без привязки к пользователю
-            diamondAmount: diamondAmount,
-            type: 'admin_created',
-            used: false,
-            createdAt: new Date(),
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 дней
-        });
+        await couponsCollection.insertMany(coupons);
 
         const confirmText =
-            `✅ *Купон создан успешно!*\n\n` +
+            `✅ *Купоны созданы успешно!*\n\n` +
             `🎟️ *Код:* \`${customCode}\`\n` +
             `💎 *Номинал:* ${diamondAmount} алмазов\n` +
-            `⏰ *Действителен:* 30 дней\n\n` +
-            `Купон можно использовать при оформлении заказа на пакет ${diamondAmount} алмазов`;
+            `📦 *Количество:* ${quantity} шт\n` +
+            `⏰ *Действительны:* 30 дней\n\n` +
+            `Купон "${customCode}" может быть использован ${quantity} раз`;
 
         await bot.sendMessage(chatId, confirmText, { parse_mode: 'Markdown' });
 
         if (logger && logger.userAction) {
-            logger.userAction(chatId, 'admin_coupon_created', { code: customCode, amount: diamondAmount });
+            logger.userAction(chatId, 'admin_coupons_created', { code: customCode, amount: diamondAmount, quantity });
         }
 
     } catch (error) {
         if (logger && logger.error) {
             logger.error('Error creating admin coupon:', error);
         }
-        await bot.sendMessage(chatId, '❌ Ошибка создания купона');
+        await bot.sendMessage(chatId, '❌ Ошибка создания купонов');
     }
 });
 
