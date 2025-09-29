@@ -770,8 +770,8 @@ async function createPaymentOrder(chatId, orderData) {
             }
         }
 
-        // Создаем уникальный ID заказа
-        const orderId = `${chatId}_${Date.now()}`;
+        // Создаем короткий уникальный ID заказа (4 цифры)
+        const orderId = Math.floor(1000 + Math.random() * 9000).toString();
 
         // Если купон - обрабатываем сразу без оплаты
         if (orderData.isCoupon) {
@@ -1590,6 +1590,207 @@ bot.onText(/\/start(.*)/, async (msg, match) => {
     }
 
     await showMainMenu(chatId);
+});
+
+// Команда статистики для админа
+bot.onText(/\/stats/, async (msg) => {
+    const chatId = msg.chat.id;
+
+    // Проверяем, что это админ
+    if (chatId.toString() !== ADMIN_CHAT_ID) {
+        await bot.sendMessage(chatId, '❌ Доступ запрещен');
+        return;
+    }
+
+    try {
+        if (!db) {
+            await bot.sendMessage(chatId, '❌ База данных недоступна');
+            return;
+        }
+
+        const usersCollection = db.collection('users');
+        const ordersCollection = db.collection('orders');
+        const referralsCollection = db.collection('referrals');
+        const couponsCollection = db.collection('coupons');
+
+        // Общая статистика пользователей
+        const totalUsers = await usersCollection.countDocuments();
+        const usersWithPurchases = await usersCollection.countDocuments({ purchases: { $gt: 0 } });
+        const usersWithReferrals = await usersCollection.countDocuments({ referredBy: { $exists: true } });
+
+        // Статистика заказов
+        const totalOrders = await ordersCollection.countDocuments();
+        const confirmedOrders = await ordersCollection.countDocuments({ status: 'confirmed' });
+        const pendingOrders = await ordersCollection.countDocuments({ status: 'awaiting_payment' });
+        const paidOrders = await ordersCollection.countDocuments({ status: 'paid' });
+
+        // Финансовая статистика
+        const confirmedOrdersData = await ordersCollection.find({ status: 'confirmed' }).toArray();
+        let totalRevenue = 0;
+        let totalCost = 0;
+        confirmedOrdersData.forEach(order => {
+            totalRevenue += order.finalPrice || 0;
+            // Находим себестоимость из DIAMONDS_DATA
+            const diamondsData = order.region === 'RU' ? DIAMONDS_DATA_RU : DIAMONDS_DATA_KG;
+            const diamond = diamondsData.find(d => d.amount === order.diamondAmount);
+            if (diamond) {
+                totalCost += diamond.cost || 0;
+            }
+        });
+        const totalProfit = totalRevenue - totalCost;
+
+        // Реферальная статистика
+        const totalReferrals = await referralsCollection.countDocuments();
+        const referralBonusesPaid = await referralsCollection.aggregate([
+            { $group: { _id: null, total: { $sum: '$bonusAwarded' } } }
+        ]).toArray();
+        const totalReferralBonuses = referralBonusesPaid.length > 0 ? referralBonusesPaid[0].total : 0;
+
+        // Статистика купонов
+        const totalCoupons = await couponsCollection.countDocuments();
+        const usedCoupons = await couponsCollection.countDocuments({ used: true });
+        const activeCoupons = await couponsCollection.countDocuments({ used: false, expiresAt: { $gt: new Date() } });
+
+        // Топ покупателей
+        const topBuyers = await usersCollection.find({ purchases: { $gt: 0 } })
+            .sort({ totalSpent: -1 })
+            .limit(5)
+            .toArray();
+
+        // Топ рефереров
+        const topReferrers = await usersCollection.find({ totalReferralEarnings: { $gt: 0 } })
+            .sort({ totalReferralEarnings: -1 })
+            .limit(5)
+            .toArray();
+
+        // Формируем сообщение
+        let statsText = `📊 *РАСШИРЕННАЯ СТАТИСТИКА*\n\n`;
+
+        statsText += `👥 *ПОЛЬЗОВАТЕЛИ*\n`;
+        statsText += `• Всего: ${totalUsers}\n`;
+        statsText += `• С покупками: ${usersWithPurchases} (${((usersWithPurchases / totalUsers) * 100).toFixed(1)}%)\n`;
+        statsText += `• Пришли по рефералам: ${usersWithReferrals}\n\n`;
+
+        statsText += `📦 *ЗАКАЗЫ*\n`;
+        statsText += `• Всего: ${totalOrders}\n`;
+        statsText += `• Выполнено: ${confirmedOrders}\n`;
+        statsText += `• Ожидают оплаты: ${pendingOrders}\n`;
+        statsText += `• Оплачено (ждут подтверждения): ${paidOrders}\n`;
+        statsText += `• Конверсия: ${totalUsers > 0 ? ((confirmedOrders / totalUsers) * 100).toFixed(1) : 0}%\n\n`;
+
+        statsText += `💰 *ФИНАНСЫ*\n`;
+        statsText += `• Выручка: ${totalRevenue.toFixed(2)} руб\n`;
+        statsText += `• Себестоимость: ${totalCost.toFixed(2)} руб\n`;
+        statsText += `• Прибыль: ${totalProfit.toFixed(2)} руб\n`;
+        statsText += `• Рентабельность: ${totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0}%\n\n`;
+
+        statsText += `🎁 *РЕФЕРАЛЬНАЯ ПРОГРАММА*\n`;
+        statsText += `• Всего рефералов: ${totalReferrals}\n`;
+        statsText += `• Выплачено бонусов: ${totalReferralBonuses} алмазов\n\n`;
+
+        statsText += `🎟️ *КУПОНЫ*\n`;
+        statsText += `• Всего создано: ${totalCoupons}\n`;
+        statsText += `• Использовано: ${usedCoupons}\n`;
+        statsText += `• Активных: ${activeCoupons}\n\n`;
+
+        if (topBuyers.length > 0) {
+            statsText += `🏆 *ТОП-5 ПОКУПАТЕЛЕЙ*\n`;
+            topBuyers.forEach((user, index) => {
+                statsText += `${index + 1}. ID ${user.chatId} - ${user.totalSpent?.toFixed(2) || 0} руб (${user.purchases || 0} покупок)\n`;
+            });
+            statsText += `\n`;
+        }
+
+        if (topReferrers.length > 0) {
+            statsText += `👥 *ТОП-5 РЕФЕРЕРОВ*\n`;
+            topReferrers.forEach((user, index) => {
+                statsText += `${index + 1}. ID ${user.chatId} - ${user.totalReferralEarnings || 0} алмазов заработано\n`;
+            });
+        }
+
+        await bot.sendMessage(chatId, statsText, {
+            parse_mode: 'Markdown'
+        });
+
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'admin_stats_viewed');
+        }
+
+    } catch (error) {
+        if (logger && logger.error) {
+            logger.error('Error showing admin stats:', error);
+        }
+        await bot.sendMessage(chatId, '❌ Ошибка получения статистики');
+    }
+});
+
+// Команда создания купона для админа
+bot.onText(/\/createcoupon (\d+) (\S+)/, async (msg, match) => {
+    const chatId = msg.chat.id;
+
+    // Проверяем, что это админ
+    if (chatId.toString() !== ADMIN_CHAT_ID) {
+        await bot.sendMessage(chatId, '❌ Доступ запрещен');
+        return;
+    }
+
+    try {
+        const diamondAmount = parseInt(match[1]);
+        const customCode = match[2];
+
+        if (!db) {
+            await bot.sendMessage(chatId, '❌ База данных недоступна');
+            return;
+        }
+
+        // Проверяем, что такой пакет существует
+        const allDiamonds = [...DIAMONDS_DATA_RU, ...DIAMONDS_DATA_KG];
+        const packageExists = allDiamonds.some(d => d.amount === diamondAmount);
+
+        if (!packageExists) {
+            await bot.sendMessage(chatId, `❌ Пакет на ${diamondAmount} алмазов не существует`);
+            return;
+        }
+
+        // Проверяем уникальность кода
+        const couponsCollection = db.collection('coupons');
+        const existing = await couponsCollection.findOne({ code: customCode });
+
+        if (existing) {
+            await bot.sendMessage(chatId, `❌ Купон с кодом "${customCode}" уже существует`);
+            return;
+        }
+
+        // Создаем купон
+        await couponsCollection.insertOne({
+            code: customCode,
+            userId: null, // Админский купон - без привязки к пользователю
+            diamondAmount: diamondAmount,
+            type: 'admin_created',
+            used: false,
+            createdAt: new Date(),
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 дней
+        });
+
+        const confirmText =
+            `✅ *Купон создан успешно!*\n\n` +
+            `🎟️ *Код:* \`${customCode}\`\n` +
+            `💎 *Номинал:* ${diamondAmount} алмазов\n` +
+            `⏰ *Действителен:* 30 дней\n\n` +
+            `Купон можно использовать при оформлении заказа на пакет ${diamondAmount} алмазов`;
+
+        await bot.sendMessage(chatId, confirmText, { parse_mode: 'Markdown' });
+
+        if (logger && logger.userAction) {
+            logger.userAction(chatId, 'admin_coupon_created', { code: customCode, amount: diamondAmount });
+        }
+
+    } catch (error) {
+        if (logger && logger.error) {
+            logger.error('Error creating admin coupon:', error);
+        }
+        await bot.sendMessage(chatId, '❌ Ошибка создания купона');
+    }
 });
 
 // Обработчик сообщений для заказов и скриншотов
