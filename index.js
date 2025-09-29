@@ -1804,6 +1804,54 @@ bot.onText(/\/createcoupon (\d+) (\S+)(?: (\d+))?/, async (msg, match) => {
     }
 });
 
+// Команда сброса статистики для админа
+bot.onText(/\/resetstats/, async (msg) => {
+    const chatId = msg.chat.id;
+
+    // Проверяем, что это админ
+    if (chatId.toString() !== ADMIN_CHAT_ID) {
+        await bot.sendMessage(chatId, '❌ Доступ запрещен');
+        return;
+    }
+
+    try {
+        if (!db) {
+            await bot.sendMessage(chatId, '❌ База данных недоступна');
+            return;
+        }
+
+        // Запрашиваем подтверждение
+        const confirmText =
+            `⚠️ *ВНИМАНИЕ!*\n\n` +
+            `Вы действительно хотите сбросить всю статистику?\n\n` +
+            `Это удалит:\n` +
+            `• Всех пользователей\n` +
+            `• Все заказы\n` +
+            `• Все промокоды\n` +
+            `• Все купоны\n` +
+            `• Всю реферальную информацию\n\n` +
+            `*Это действие необратимо!*`;
+
+        await bot.sendMessage(chatId, confirmText, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '✅ Да, сбросить', callback_data: 'confirm_reset_stats' },
+                        { text: '❌ Отмена', callback_data: 'cancel_reset_stats' }
+                    ]
+                ]
+            }
+        });
+
+    } catch (error) {
+        if (logger && logger.error) {
+            logger.error('Error showing reset confirmation:', error);
+        }
+        await bot.sendMessage(chatId, '❌ Ошибка');
+    }
+});
+
 // Команда создания промокода для админа
 bot.onText(/\/createpromo (\S+) (\d+)(?: (\d+))?(?: (\d+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
@@ -1926,6 +1974,44 @@ bot.on('callback_query', async (q) => {
         } else if (q.data.startsWith('withdraw_')) {
             const amount = parseInt(q.data.split('_')[1]);
             await processWithdrawBonus(chatId, amount);
+        } else if (q.data === 'confirm_reset_stats') {
+            // Сброс статистики
+            if (chatId.toString() === ADMIN_CHAT_ID && db) {
+                try {
+                    await db.collection('users').deleteMany({});
+                    await db.collection('orders').deleteMany({});
+                    await db.collection('promos').deleteMany({});
+                    await db.collection('promo_usage').deleteMany({});
+                    await db.collection('coupons').deleteMany({});
+                    await db.collection('referrals').deleteMany({});
+
+                    await bot.editMessageText(
+                        '✅ *Статистика успешно сброшена!*\n\nВсе данные удалены из базы.',
+                        {
+                            chat_id: chatId,
+                            message_id: messageId,
+                            parse_mode: 'Markdown'
+                        }
+                    );
+
+                    if (logger && logger.userAction) {
+                        logger.userAction(chatId, 'stats_reset');
+                    }
+                } catch (error) {
+                    if (logger && logger.error) {
+                        logger.error('Error resetting stats:', error);
+                    }
+                    await bot.sendMessage(chatId, '❌ Ошибка сброса статистики');
+                }
+            }
+        } else if (q.data === 'cancel_reset_stats') {
+            await bot.editMessageText(
+                '❌ Сброс статистики отменен',
+                {
+                    chat_id: chatId,
+                    message_id: messageId
+                }
+            );
         } else if (q.data === 'back_to_start') {
             await showMainMenu(chatId, messageId);
         } else if (q.data.startsWith('region_')) {
