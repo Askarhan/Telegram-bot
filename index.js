@@ -1713,7 +1713,12 @@ bot.onText(/\/stats/, async (msg) => {
         }
 
         await bot.sendMessage(chatId, statsText, {
-            parse_mode: 'Markdown'
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [{ text: '🔄 Обновить', callback_data: 'refresh_stats' }]
+                ]
+            }
         });
 
         if (logger && logger.userAction) {
@@ -1804,53 +1809,6 @@ bot.onText(/\/createcoupon (\d+) (\S+)(?: (\d+))?/, async (msg, match) => {
     }
 });
 
-// Команда сброса статистики для админа
-bot.onText(/\/resetstats/, async (msg) => {
-    const chatId = msg.chat.id;
-
-    // Проверяем, что это админ
-    if (chatId.toString() !== ADMIN_CHAT_ID) {
-        await bot.sendMessage(chatId, '❌ Доступ запрещен');
-        return;
-    }
-
-    try {
-        if (!db) {
-            await bot.sendMessage(chatId, '❌ База данных недоступна');
-            return;
-        }
-
-        // Запрашиваем подтверждение
-        const confirmText =
-            `⚠️ *ВНИМАНИЕ!*\n\n` +
-            `Вы действительно хотите сбросить всю статистику?\n\n` +
-            `Это удалит:\n` +
-            `• Всех пользователей\n` +
-            `• Все заказы\n` +
-            `• Все промокоды\n` +
-            `• Все купоны\n` +
-            `• Всю реферальную информацию\n\n` +
-            `*Это действие необратимо!*`;
-
-        await bot.sendMessage(chatId, confirmText, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: '✅ Да, сбросить', callback_data: 'confirm_reset_stats' },
-                        { text: '❌ Отмена', callback_data: 'cancel_reset_stats' }
-                    ]
-                ]
-            }
-        });
-
-    } catch (error) {
-        if (logger && logger.error) {
-            logger.error('Error showing reset confirmation:', error);
-        }
-        await bot.sendMessage(chatId, '❌ Ошибка');
-    }
-});
 
 // Команда создания промокода для админа
 bot.onText(/\/createpromo (\S+) (\d+)(?: (\d+))?(?: (\d+))?/, async (msg, match) => {
@@ -1974,44 +1932,117 @@ bot.on('callback_query', async (q) => {
         } else if (q.data.startsWith('withdraw_')) {
             const amount = parseInt(q.data.split('_')[1]);
             await processWithdrawBonus(chatId, amount);
-        } else if (q.data === 'confirm_reset_stats') {
-            // Сброс статистики
+        } else if (q.data === 'refresh_stats') {
+            // Обновляем статистику
             if (chatId.toString() === ADMIN_CHAT_ID && db) {
                 try {
-                    await db.collection('users').deleteMany({});
-                    await db.collection('orders').deleteMany({});
-                    await db.collection('promos').deleteMany({});
-                    await db.collection('promo_usage').deleteMany({});
-                    await db.collection('coupons').deleteMany({});
-                    await db.collection('referrals').deleteMany({});
+                    const usersCollection = db.collection('users');
+                    const ordersCollection = db.collection('orders');
+                    const referralsCollection = db.collection('referrals');
+                    const couponsCollection = db.collection('coupons');
 
-                    await bot.editMessageText(
-                        '✅ *Статистика успешно сброшена!*\n\nВсе данные удалены из базы.',
-                        {
-                            chat_id: chatId,
-                            message_id: messageId,
-                            parse_mode: 'Markdown'
+                    const totalUsers = await usersCollection.countDocuments();
+                    const usersWithPurchases = await usersCollection.countDocuments({ purchases: { $gt: 0 } });
+                    const usersWithReferrals = await usersCollection.countDocuments({ referredBy: { $exists: true } });
+
+                    const totalOrders = await ordersCollection.countDocuments();
+                    const confirmedOrders = await ordersCollection.countDocuments({ status: 'confirmed' });
+                    const pendingOrders = await ordersCollection.countDocuments({ status: 'awaiting_payment' });
+                    const paidOrders = await ordersCollection.countDocuments({ status: 'paid' });
+
+                    const confirmedOrdersData = await ordersCollection.find({ status: 'confirmed' }).toArray();
+                    let totalRevenue = 0;
+                    let totalCost = 0;
+                    confirmedOrdersData.forEach(order => {
+                        totalRevenue += order.finalPrice || 0;
+                        const diamondsData = order.region === 'RU' ? DIAMONDS_DATA_RU : DIAMONDS_DATA_KG;
+                        const diamond = diamondsData.find(d => d.amount === order.diamondAmount);
+                        if (diamond) {
+                            totalCost += diamond.cost || 0;
                         }
-                    );
+                    });
+                    const totalProfit = totalRevenue - totalCost;
 
-                    if (logger && logger.userAction) {
-                        logger.userAction(chatId, 'stats_reset');
+                    const totalReferrals = await referralsCollection.countDocuments();
+                    const referralBonusesPaid = await referralsCollection.aggregate([
+                        { $group: { _id: null, total: { $sum: '$bonusAwarded' } } }
+                    ]).toArray();
+                    const totalReferralBonuses = referralBonusesPaid.length > 0 ? referralBonusesPaid[0].total : 0;
+
+                    const totalCoupons = await couponsCollection.countDocuments();
+                    const usedCoupons = await couponsCollection.countDocuments({ used: true });
+                    const activeCoupons = await couponsCollection.countDocuments({ used: false, expiresAt: { $gt: new Date() } });
+
+                    const topBuyers = await usersCollection.find({ purchases: { $gt: 0 } })
+                        .sort({ totalSpent: -1 })
+                        .limit(5)
+                        .toArray();
+
+                    const topReferrers = await usersCollection.find({ totalReferralEarnings: { $gt: 0 } })
+                        .sort({ totalReferralEarnings: -1 })
+                        .limit(5)
+                        .toArray();
+
+                    let statsText = `📊 *РАСШИРЕННАЯ СТАТИСТИКА*\n\n`;
+
+                    statsText += `👥 *ПОЛЬЗОВАТЕЛИ*\n`;
+                    statsText += `• Всего: ${totalUsers}\n`;
+                    statsText += `• С покупками: ${usersWithPurchases} (${((usersWithPurchases / totalUsers) * 100).toFixed(1)}%)\n`;
+                    statsText += `• Пришли по рефералам: ${usersWithReferrals}\n\n`;
+
+                    statsText += `📦 *ЗАКАЗЫ*\n`;
+                    statsText += `• Всего: ${totalOrders}\n`;
+                    statsText += `• Выполнено: ${confirmedOrders}\n`;
+                    statsText += `• Ожидают оплаты: ${pendingOrders}\n`;
+                    statsText += `• Оплачено (ждут подтверждения): ${paidOrders}\n`;
+                    statsText += `• Конверсия: ${totalUsers > 0 ? ((confirmedOrders / totalUsers) * 100).toFixed(1) : 0}%\n\n`;
+
+                    statsText += `💰 *ФИНАНСЫ*\n`;
+                    statsText += `• Выручка: ${totalRevenue.toFixed(2)} руб\n`;
+                    statsText += `• Себестоимость: ${totalCost.toFixed(2)} руб\n`;
+                    statsText += `• Прибыль: ${totalProfit.toFixed(2)} руб\n`;
+                    statsText += `• Рентабельность: ${totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : 0}%\n\n`;
+
+                    statsText += `🎁 *РЕФЕРАЛЬНАЯ ПРОГРАММА*\n`;
+                    statsText += `• Всего рефералов: ${totalReferrals}\n`;
+                    statsText += `• Выплачено бонусов: ${totalReferralBonuses} алмазов\n\n`;
+
+                    statsText += `🎟️ *КУПОНЫ*\n`;
+                    statsText += `• Всего создано: ${totalCoupons}\n`;
+                    statsText += `• Использовано: ${usedCoupons}\n`;
+                    statsText += `• Активных: ${activeCoupons}\n\n`;
+
+                    if (topBuyers.length > 0) {
+                        statsText += `🏆 *ТОП-5 ПОКУПАТЕЛЕЙ*\n`;
+                        topBuyers.forEach((user, index) => {
+                            statsText += `${index + 1}. ID ${user.chatId} - ${user.totalSpent?.toFixed(2) || 0} руб (${user.purchases || 0} покупок)\n`;
+                        });
+                        statsText += `\n`;
                     }
+
+                    if (topReferrers.length > 0) {
+                        statsText += `👥 *ТОП-5 РЕФЕРЕРОВ*\n`;
+                        topReferrers.forEach((user, index) => {
+                            statsText += `${index + 1}. ID ${user.chatId} - ${user.totalReferralEarnings || 0} алмазов заработано\n`;
+                        });
+                    }
+
+                    await bot.editMessageText(statsText, {
+                        chat_id: chatId,
+                        message_id: messageId,
+                        parse_mode: 'Markdown',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [{ text: '🔄 Обновить', callback_data: 'refresh_stats' }]
+                            ]
+                        }
+                    });
                 } catch (error) {
                     if (logger && logger.error) {
-                        logger.error('Error resetting stats:', error);
+                        logger.error('Error refreshing stats:', error);
                     }
-                    await bot.sendMessage(chatId, '❌ Ошибка сброса статистики');
                 }
             }
-        } else if (q.data === 'cancel_reset_stats') {
-            await bot.editMessageText(
-                '❌ Сброс статистики отменен',
-                {
-                    chat_id: chatId,
-                    message_id: messageId
-                }
-            );
         } else if (q.data === 'back_to_start') {
             await showMainMenu(chatId, messageId);
         } else if (q.data.startsWith('region_')) {
