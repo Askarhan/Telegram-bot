@@ -1810,6 +1810,55 @@ bot.onText(/\/createcoupon (\d+) (\S+)(?: (\d+))?/, async (msg, match) => {
 });
 
 
+// Команда очистки статистики для админа
+bot.onText(/\/clearstats/, async (msg) => {
+    const chatId = msg.chat.id;
+
+    // Проверяем, что это админ
+    if (chatId.toString() !== ADMIN_CHAT_ID) {
+        await bot.sendMessage(chatId, '❌ Доступ запрещен');
+        return;
+    }
+
+    try {
+        if (!db) {
+            await bot.sendMessage(chatId, '❌ База данных недоступна');
+            return;
+        }
+
+        // Запрашиваем подтверждение
+        const confirmText =
+            `⚠️ *ОЧИСТКА СТАТИСТИКИ*\n\n` +
+            `Это удалит:\n` +
+            `• Все заказы\n` +
+            `• Историю использования промокодов\n` +
+            `• Историю рефералов\n\n` +
+            `*НЕ удаляет:*\n` +
+            `✅ Пользователей и их балансы\n` +
+            `✅ Активные промокоды\n` +
+            `✅ Активные купоны\n\n` +
+            `Продолжить?`;
+
+        await bot.sendMessage(chatId, confirmText, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: '✅ Да, очистить', callback_data: 'confirm_clear_stats' },
+                        { text: '❌ Отмена', callback_data: 'cancel_clear_stats' }
+                    ]
+                ]
+            }
+        });
+
+    } catch (error) {
+        if (logger && logger.error) {
+            logger.error('Error showing clear confirmation:', error);
+        }
+        await bot.sendMessage(chatId, '❌ Ошибка');
+    }
+});
+
 // Команда создания промокода для админа
 bot.onText(/\/createpromo (\S+) (\d+)(?: (\d+))?(?: (\d+))?/, async (msg, match) => {
     const chatId = msg.chat.id;
@@ -1932,6 +1981,46 @@ bot.on('callback_query', async (q) => {
         } else if (q.data.startsWith('withdraw_')) {
             const amount = parseInt(q.data.split('_')[1]);
             await processWithdrawBonus(chatId, amount);
+        } else if (q.data === 'confirm_clear_stats') {
+            // Очистка статистики
+            if (chatId.toString() === ADMIN_CHAT_ID && db) {
+                try {
+                    await db.collection('orders').deleteMany({});
+                    await db.collection('promo_usage').deleteMany({});
+                    await db.collection('referrals').deleteMany({});
+
+                    await bot.editMessageText(
+                        '✅ *Статистика очищена!*\n\n' +
+                        'Удалены:\n' +
+                        '• Все заказы\n' +
+                        '• История промокодов\n' +
+                        '• История рефералов\n\n' +
+                        'Пользователи, промокоды и купоны сохранены.',
+                        {
+                            chat_id: chatId,
+                            message_id: messageId,
+                            parse_mode: 'Markdown'
+                        }
+                    );
+
+                    if (logger && logger.userAction) {
+                        logger.userAction(chatId, 'stats_cleared');
+                    }
+                } catch (error) {
+                    if (logger && logger.error) {
+                        logger.error('Error clearing stats:', error);
+                    }
+                    await bot.sendMessage(chatId, '❌ Ошибка очистки статистики');
+                }
+            }
+        } else if (q.data === 'cancel_clear_stats') {
+            await bot.editMessageText(
+                '❌ Очистка статистики отменена',
+                {
+                    chat_id: chatId,
+                    message_id: messageId
+                }
+            );
         } else if (q.data === 'refresh_stats') {
             // Обновляем статистику
             if (chatId.toString() === ADMIN_CHAT_ID && db) {
