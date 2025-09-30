@@ -12,7 +12,6 @@ const logger = require('./utils/logger');
 const Validators = require('./utils/validators');
 const ReferralService = require('./services/referralService');
 const PromoService = require('./services/promoService');
-const BotHandlers = require('./handlers/botHandlers');
 
 logger.info('🚀 Starting ANNUR DIAMONDS Bot v2.0');
 
@@ -23,7 +22,6 @@ console.log('logger loaded:', !!logger);
 console.log('Validators loaded:', !!Validators);
 console.log('ReferralService loaded:', !!ReferralService);
 console.log('PromoService loaded:', !!PromoService);
-console.log('BotHandlers loaded:', !!BotHandlers);
 
 console.log('🔍 Checking environment variables:');
 console.log('TOKEN exists:', !!process.env.TOKEN);
@@ -75,7 +73,6 @@ let db = null;
 let client = null;
 let referralService = null;
 let promoService = null;
-let botHandlers = null;
 let selectedRegion = 'RU';
 
 // Подключение к MongoDB
@@ -90,7 +87,6 @@ async function connectToDatabase() {
         // Инициализация сервисов
         referralService = new ReferralService(db);
         promoService = new PromoService(db);
-        botHandlers = new BotHandlers(bot, db, referralService, promoService);
 
         logger.info('✅ Database connected successfully');
         return true;
