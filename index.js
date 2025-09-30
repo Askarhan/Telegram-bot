@@ -2223,12 +2223,7 @@ async function startBot() {
         }
 
         // Регистрация дополнительных команд после инициализации сервисов
-        if (botHandlers) {
-            bot.onText(/\/stats/, (msg) => botHandlers.handleStats(msg));
-            bot.onText(/\/createpromo (.+)/, (msg, match) => botHandlers.handleCreatePromo(msg, match));
-            bot.onText(/\/history/, (msg) => botHandlers.handleHistory(msg));
-            bot.onText(/\/mybonus/, (msg) => botHandlers.handleMyBonus(msg));
-        }
+        // (Удалены дублирующие обработчики - теперь все команды обрабатываются выше)
 
         if (WEBHOOK_URL) {
             await bot.setWebHook(`${WEBHOOK_URL}/bot${TOKEN}`);
